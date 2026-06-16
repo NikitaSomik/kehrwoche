@@ -1,0 +1,7 @@
+.git
+.env
+.env.example
+schedule.json
+config.json
+out/
+.idea/
