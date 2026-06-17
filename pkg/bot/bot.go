@@ -45,9 +45,9 @@ func (b *Bot) SendWeeklyReminder() {
 
 	var text string
 	if !ok {
-		text = fmt.Sprintf("🚽 *Toilette — %s*\n\nKeine Planung für diese Woche.", window)
+		text = fmt.Sprintf("🏠 *Toilette — %s*\n\nKeine Planung für diese Woche.", window)
 	} else {
-		text = fmt.Sprintf("🚽 *Toilette — %s*\n\n%s ist dran!", window, room)
+		text = fmt.Sprintf("🏠 *Toilette — %s*\\n\\nErinnerung: *%s* ist diese Woche für die Toilette zuständig.", window, room)
 	}
 
 	b.send(b.cfg.ChatID, text)
@@ -86,7 +86,7 @@ func (b *Bot) handleMessage(msg *tgbotapi.Message) {
 		if !ok {
 			text = fmt.Sprintf("❓ %s: keine Planung.", window)
 		} else {
-			text = fmt.Sprintf("🚽 %s: *%s*", window, room)
+			text = fmt.Sprintf("🏠 %s: *%s*", window, room)
 		}
 		b.send(msg.Chat.ID, text)
 

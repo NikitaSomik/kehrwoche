@@ -53,9 +53,9 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 	window := schedule.CleaningWindow(now)
 	var text string
 	if !ok {
-		text = fmt.Sprintf("🚽 *Toilette — %s*\n\nKeine Planung für diese Woche.", window)
+		text = fmt.Sprintf("🏠 *Toilette — %s*\n\nKeine Planung für diese Woche.", window)
 	} else {
-		text = fmt.Sprintf("🚽 *Toilette — %s*\n\n%s ist dran!", window, room)
+		text = fmt.Sprintf("🏠 *Toilette — %s*\n\nErinnerung: *%s* ist diese Woche für die Toilette zuständig.", window, room)
 	}
 
 	chatID, err := strconv.ParseInt(os.Getenv("CHAT_ID"), 10, 64)

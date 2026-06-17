@@ -77,7 +77,7 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 		if err != nil || !ok {
 			text = fmt.Sprintf("❓ %s: keine Planung.", window)
 		} else {
-			text = fmt.Sprintf("🚽 %s: *%s*", window, room)
+			text = fmt.Sprintf("🏠 %s: *%s*", window, room)
 		}
 		if err := sendTelegram(ctx, token, chatID, text); err != nil {
 			log.Printf("webhook: send: %v", err)
