@@ -115,3 +115,19 @@ func WeekKey(t time.Time) string {
 	year, week := t.ISOWeek()
 	return fmt.Sprintf("%d-W%02d", year, week)
 }
+
+// CleaningWindow returns the Friday–Sunday date range string for the week containing t,
+// e.g. "20.06 – 22.06". Handles month and year rollovers naturally.
+func CleaningWindow(t time.Time) string {
+	weekday := int(t.Weekday())
+	if weekday == 0 {
+		weekday = 7
+	}
+	monday := t.AddDate(0, 0, -(weekday - 1))
+	friday := monday.AddDate(0, 0, 4)
+	sunday := monday.AddDate(0, 0, 6)
+	return fmt.Sprintf("%02d.%02d – %02d.%02d",
+		friday.Day(), int(friday.Month()),
+		sunday.Day(), int(sunday.Month()),
+	)
+}

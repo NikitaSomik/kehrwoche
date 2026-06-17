@@ -3,6 +3,8 @@ package bot
 import (
 	"testing"
 	"time"
+
+	"github.com/nikitasomusev/kehrwoche/internal/schedule"
 )
 
 func TestCleaningWindow(t *testing.T) {
@@ -22,7 +24,7 @@ func TestCleaningWindow(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			d, _ := time.Parse("2006-01-02", tc.date)
-			if got := cleaningWindow(d); got != tc.want {
+			if got := schedule.CleaningWindow(d); got != tc.want {
 				t.Errorf("got %q, want %q", got, tc.want)
 			}
 		})

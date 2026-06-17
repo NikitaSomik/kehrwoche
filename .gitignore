@@ -4,3 +4,5 @@ config.json
 out/
 *.exe
 main
+.vercel
+.idea/

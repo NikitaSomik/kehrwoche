@@ -41,7 +41,7 @@ func (b *Bot) SendWeeklyReminder() {
 	entries := b.loadEntries()
 	now := time.Now().In(b.cfg.Location)
 	room, ok := schedule.OnDuty(entries, now)
-	window := cleaningWindow(now)
+	window := schedule.CleaningWindow(now)
 
 	var text string
 	if !ok {
@@ -81,7 +81,7 @@ func (b *Bot) handleMessage(msg *tgbotapi.Message) {
 	case "wer":
 		now := time.Now().In(b.cfg.Location)
 		room, ok := schedule.OnDuty(entries, now)
-		window := cleaningWindow(now)
+		window := schedule.CleaningWindow(now)
 		var text string
 		if !ok {
 			text = fmt.Sprintf("❓ %s: keine Planung.", window)
@@ -95,7 +95,7 @@ func (b *Bot) handleMessage(msg *tgbotapi.Message) {
 		lines := make([]string, len(upcoming))
 		for i, e := range upcoming {
 			t := schedule.ParseWeekKey(e.Week)
-			window := cleaningWindow(t)
+			window := schedule.CleaningWindow(t)
 			room := e.Room
 			if room == "" {
 				room = "—"
@@ -113,20 +113,4 @@ func (b *Bot) send(chatID int64, text string) {
 	if _, err := b.api.Send(msg); err != nil {
 		log.Printf("send to %d: %v", chatID, err)
 	}
-}
-
-// cleaningWindow returns the Friday–Sunday date range for the week containing t.
-// Handles month and year boundaries naturally: "30.01 – 01.02", "31.12 – 02.01".
-func cleaningWindow(t time.Time) string {
-	weekday := int(t.Weekday())
-	if weekday == 0 {
-		weekday = 7 // Sunday = 7 in ISO
-	}
-	monday := t.AddDate(0, 0, -(weekday - 1))
-	friday := monday.AddDate(0, 0, 4)
-	sunday := monday.AddDate(0, 0, 6)
-	return fmt.Sprintf("%02d.%02d – %02d.%02d",
-		friday.Day(), int(friday.Month()),
-		sunday.Day(), int(sunday.Month()),
-	)
 }
