@@ -11,9 +11,9 @@ import (
 	"time"
 
 	"github.com/joho/godotenv"
-	"github.com/nikitasomusev/kehrwoche/internal/bot"
-	"github.com/nikitasomusev/kehrwoche/internal/config"
-	"github.com/nikitasomusev/kehrwoche/internal/schedule"
+	"github.com/nikitasomusev/kehrwoche/pkg/bot"
+	"github.com/nikitasomusev/kehrwoche/pkg/config"
+	"github.com/nikitasomusev/kehrwoche/pkg/schedule"
 )
 
 func main() {

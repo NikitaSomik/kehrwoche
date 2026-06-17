@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/nikitasomusev/kehrwoche/internal/config"
-	"github.com/nikitasomusev/kehrwoche/internal/schedule"
+	"github.com/nikitasomusev/kehrwoche/pkg/config"
+	"github.com/nikitasomusev/kehrwoche/pkg/schedule"
 )
 
 func TestNextThursday(t *testing.T) {

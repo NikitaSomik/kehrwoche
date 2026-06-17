@@ -8,8 +8,8 @@ import (
 	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
-	"github.com/nikitasomusev/kehrwoche/internal/config"
-	"github.com/nikitasomusev/kehrwoche/internal/schedule"
+	"github.com/nikitasomusev/kehrwoche/pkg/config"
+	"github.com/nikitasomusev/kehrwoche/pkg/schedule"
 )
 
 type Bot struct {

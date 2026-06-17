@@ -14,8 +14,8 @@ import (
 	_ "time/tzdata"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
-	"github.com/nikitasomusev/kehrwoche/internal/db"
-	"github.com/nikitasomusev/kehrwoche/internal/schedule"
+	"github.com/nikitasomusev/kehrwoche/pkg/db"
+	"github.com/nikitasomusev/kehrwoche/pkg/schedule"
 )
 
 func Handler(w http.ResponseWriter, r *http.Request) {

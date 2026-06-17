@@ -13,8 +13,8 @@ import (
 
 	_ "time/tzdata"
 
-	"github.com/nikitasomusev/kehrwoche/internal/db"
-	"github.com/nikitasomusev/kehrwoche/internal/schedule"
+	"github.com/nikitasomusev/kehrwoche/pkg/db"
+	"github.com/nikitasomusev/kehrwoche/pkg/schedule"
 )
 
 func Handler(w http.ResponseWriter, r *http.Request) {
