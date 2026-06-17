@@ -1,7 +1,9 @@
 package handler
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -9,14 +11,13 @@ import (
 	"strconv"
 	"time"
 
-	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	_ "time/tzdata"
+
 	"github.com/nikitasomusev/kehrwoche/internal/db"
 	"github.com/nikitasomusev/kehrwoche/internal/schedule"
 )
 
 func Handler(w http.ResponseWriter, r *http.Request) {
-	// Vercel passes Authorization: Bearer <CRON_SECRET> for cron invocations.
-	// Reject anything that doesn't match so the endpoint can't be triggered externally.
 	cronSecret := os.Getenv("CRON_SECRET")
 	if cronSecret != "" && r.Header.Get("Authorization") != "Bearer "+cronSecret {
 		w.WriteHeader(http.StatusUnauthorized)
@@ -34,7 +35,12 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer conn.Close(ctx)
 
-	loc, _ := time.LoadLocation("Europe/Berlin")
+	loc, err := time.LoadLocation("Europe/Berlin")
+	if err != nil {
+		log.Printf("cron: load location: %v", err)
+		http.Error(w, "config error", http.StatusInternalServerError)
+		return
+	}
 	now := time.Now().In(loc)
 
 	room, ok, err := schedule.GetOnDuty(ctx, conn, "toilet", now)
@@ -59,20 +65,34 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	api, err := tgbotapi.NewBotAPI(os.Getenv("TELEGRAM_BOT_TOKEN"))
-	if err != nil {
-		log.Printf("cron: bot api: %v", err)
-		http.Error(w, "bot error", http.StatusInternalServerError)
-		return
-	}
-
-	msg := tgbotapi.NewMessage(chatID, text)
-	msg.ParseMode = tgbotapi.ModeMarkdown
-	if _, err := api.Send(msg); err != nil {
+	if err := sendTelegram(ctx, os.Getenv("TELEGRAM_BOT_TOKEN"), chatID, text); err != nil {
 		log.Printf("cron: send: %v", err)
 		http.Error(w, "send error", http.StatusInternalServerError)
 		return
 	}
 
 	w.WriteHeader(http.StatusOK)
+}
+
+func sendTelegram(ctx context.Context, token string, chatID int64, text string) error {
+	body, err := json.Marshal(map[string]any{
+		"chat_id":    chatID,
+		"text":       text,
+		"parse_mode": "Markdown",
+	})
+	if err != nil {
+		return err
+	}
+	url := fmt.Sprintf("https://api.telegram.org/bot%s/sendMessage", token)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	return nil
 }

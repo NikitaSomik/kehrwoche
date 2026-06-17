@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -9,6 +10,8 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	_ "time/tzdata"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/nikitasomusev/kehrwoche/internal/db"
@@ -42,6 +45,11 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	cmd := update.Message.Command()
+	if cmd != "wer" && cmd != "plan" {
+		return
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
 	defer cancel()
 
@@ -52,17 +60,16 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer conn.Close(ctx)
 
-	api, err := tgbotapi.NewBotAPI(os.Getenv("TELEGRAM_BOT_TOKEN"))
+	loc, err := time.LoadLocation("Europe/Berlin")
 	if err != nil {
-		log.Printf("webhook: bot api: %v", err)
+		log.Printf("webhook: load location: %v", err)
 		return
 	}
-
-	loc, _ := time.LoadLocation("Europe/Berlin")
 	now := time.Now().In(loc)
+	token := os.Getenv("TELEGRAM_BOT_TOKEN")
 	chatID := update.Message.Chat.ID
 
-	switch update.Message.Command() {
+	switch cmd {
 	case "wer":
 		room, ok, err := schedule.GetOnDuty(ctx, conn, "toilet", now)
 		window := schedule.CleaningWindow(now)
@@ -72,7 +79,9 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 		} else {
 			text = fmt.Sprintf("🚽 %s: *%s*", window, room)
 		}
-		sendMsg(api, chatID, text)
+		if err := sendTelegram(ctx, token, chatID, text); err != nil {
+			log.Printf("webhook: send: %v", err)
+		}
 
 	case "plan":
 		entries, err := schedule.GetUpcoming(ctx, conn, "toilet", now, 4)
@@ -90,14 +99,31 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 			}
 			lines[i] = fmt.Sprintf("%s: %s", window, room)
 		}
-		sendMsg(api, chatID, "📅 *Plan — nächste 4 Wochen:*\n\n"+strings.Join(lines, "\n"))
+		if err := sendTelegram(ctx, token, chatID, "📅 *Plan — nächste 4 Wochen:*\n\n"+strings.Join(lines, "\n")); err != nil {
+			log.Printf("webhook: send: %v", err)
+		}
 	}
 }
 
-func sendMsg(api *tgbotapi.BotAPI, chatID int64, text string) {
-	msg := tgbotapi.NewMessage(chatID, text)
-	msg.ParseMode = tgbotapi.ModeMarkdown
-	if _, err := api.Send(msg); err != nil {
-		log.Printf("webhook: send: %v", err)
+func sendTelegram(ctx context.Context, token string, chatID int64, text string) error {
+	body, err := json.Marshal(map[string]any{
+		"chat_id":    chatID,
+		"text":       text,
+		"parse_mode": "Markdown",
+	})
+	if err != nil {
+		return err
 	}
+	url := fmt.Sprintf("https://api.telegram.org/bot%s/sendMessage", token)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	return nil
 }
