@@ -17,7 +17,7 @@ import (
 )
 
 func main() {
-	godotenv.Load() //nolint:errcheck
+	godotenv.Load() //nolint:errcheck,gosec // .env is optional, missing file is expected in production
 
 	cfg, err := config.LoadFromEnv()
 	if err != nil {
