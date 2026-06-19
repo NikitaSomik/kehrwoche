@@ -7,13 +7,24 @@ import (
 	"time"
 )
 
+// DutyType identifies a cleaning responsibility stored in the DB.
+// Add new constants here when new duty areas are introduced.
+type DutyType string
+
+const (
+	DutyTypeToilet  DutyType = "toilet"
+	DutyTypeFloor   DutyType = "floor"
+	DutyTypeLaundry DutyType = "laundry"
+	DutyTypeHall    DutyType = "hall"
+)
+
 type Entry struct {
 	Week string `json:"week"`
 	Room string `json:"room"`
 }
 
 func Load(path string) ([]Entry, error) {
-	f, err := os.Open(path)
+	f, err := os.Open(path) //nolint:gosec // path comes from trusted config, not user input
 	if err != nil {
 		return nil, err
 	}
@@ -27,15 +38,25 @@ func Load(path string) ([]Entry, error) {
 }
 
 func Save(path string, entries []Entry) error {
-	f, err := os.Create(path)
+	// Write to a temp file first, then rename — avoids a corrupt file if the process crashes mid-write.
+	tmp, err := os.CreateTemp("", "schedule-*.json")
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	tmpName := tmp.Name()
 
-	enc := json.NewEncoder(f)
+	enc := json.NewEncoder(tmp)
 	enc.SetIndent("", "  ")
-	return enc.Encode(entries)
+	if err := enc.Encode(entries); err != nil {
+		_ = tmp.Close()
+		_ = os.Remove(tmpName)
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		_ = os.Remove(tmpName)
+		return err
+	}
+	return os.Rename(tmpName, path)
 }
 
 // Extend appends `weeks` new entries to existing ones, continuing the rotation.
@@ -74,12 +95,34 @@ func ParseWeekKey(key string) time.Time {
 	if n, _ := fmt.Sscanf(key, "%d-W%d", &year, &week); n != 2 {
 		return time.Time{}
 	}
-	jan4 := time.Date(year, 1, 4, 0, 0, 0, 0, time.Local)
+	jan4 := time.Date(year, 1, 4, 0, 0, 0, 0, time.UTC)
 	mon := jan4.AddDate(0, 0, -(int(jan4.Weekday())-1+7)%7)
 	if _, w := mon.ISOWeek(); w != 1 {
 		mon = mon.AddDate(0, 0, 7)
 	}
 	return mon.AddDate(0, 0, (week-1)*7)
+}
+
+// OnDutyResult holds the result of an on-duty lookup.
+// Room is empty when no schedule entry exists for the week.
+type OnDutyResult struct {
+	Room string
+}
+
+// Format returns a short reply for on-demand commands like /wer.
+func (r OnDutyResult) Format(window string) string {
+	if r.Room == "" {
+		return fmt.Sprintf("❓ %s: keine Planung.", window)
+	}
+	return fmt.Sprintf("🏠 %s: *%s*", window, r.Room)
+}
+
+// FormatReminder returns a verbose weekly reminder message for cron notifications.
+func (r OnDutyResult) FormatReminder(window string) string {
+	if r.Room == "" {
+		return fmt.Sprintf("🏠 *Toilette — %s*\n\nKeine Planung für diese Woche.", window)
+	}
+	return fmt.Sprintf("🏠 *Toilette — %s*\n\nErinnerung: *%s* ist diese Woche für die Toilette zuständig.", window, r.Room)
 }
 
 // OnDuty returns the room on duty for the given week.

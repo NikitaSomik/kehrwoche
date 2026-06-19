@@ -47,7 +47,7 @@ func (b *Bot) SendWeeklyReminder() {
 	if !ok {
 		text = fmt.Sprintf("🏠 *Toilette — %s*\n\nKeine Planung für diese Woche.", window)
 	} else {
-		text = fmt.Sprintf("🏠 *Toilette — %s*\\n\\nErinnerung: *%s* ist diese Woche für die Toilette zuständig.", window, room)
+		text = fmt.Sprintf("🏠 *Toilette — %s*\n\nErinnerung: *%s* ist diese Woche für die Toilette zuständig.", window, room)
 	}
 
 	b.send(b.cfg.ChatID, text)

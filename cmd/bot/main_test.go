@@ -71,7 +71,9 @@ func TestLoadOrGenerate(t *testing.T) {
 			{Week: "2026-W20", Room: "A"},
 			{Week: "2026-W21", Room: "B"},
 		}
-		schedule.Save(cfg.SchedulePath, initial)
+		if err := schedule.Save(cfg.SchedulePath, initial); err != nil {
+			t.Fatalf("setup: save schedule: %v", err)
+		}
 
 		entries, err := loadOrGenerate(cfg)
 		if err != nil {
@@ -89,7 +91,9 @@ func TestLoadOrGenerate(t *testing.T) {
 	t.Run("malformed file returns error", func(t *testing.T) {
 		cfg := makeCfg(filepath.Join(t.TempDir(), "schedule.json"))
 
-		os.WriteFile(cfg.SchedulePath, []byte("not valid json"), 0644)
+		if err := os.WriteFile(cfg.SchedulePath, []byte("not valid json"), 0600); err != nil {
+			t.Fatalf("setup: write file: %v", err)
+		}
 
 		if _, err := loadOrGenerate(cfg); err == nil {
 			t.Error("expected error for malformed schedule file")

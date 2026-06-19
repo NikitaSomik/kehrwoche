@@ -1,7 +1,7 @@
 -include .env
 export
 
-.PHONY: run build test fmt vet tidy send
+.PHONY: run build test fmt vet lint tidy send
 
 run:
 	@go run .
@@ -17,6 +17,9 @@ fmt:
 
 vet:
 	@go vet ./...
+
+lint:
+	@golangci-lint run ./...
 
 tidy:
 	@go mod tidy

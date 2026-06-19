@@ -8,25 +8,26 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// GetOnDuty returns the room assigned to dutyType for the week containing now.
-func GetOnDuty(ctx context.Context, conn *pgx.Conn, dutyType string, now time.Time) (string, bool, error) {
+// GetOnDuty returns the on-duty result for dutyType for the week containing now.
+// OnDutyResult.Room is empty when no schedule entry exists for the week.
+func GetOnDuty(ctx context.Context, conn *pgx.Conn, dutyType DutyType, now time.Time) (OnDutyResult, error) {
 	var room string
 	err := conn.QueryRow(ctx,
 		`SELECT room FROM schedules WHERE week_start = $1 AND duty_type = $2`,
 		mondayOf(now), dutyType,
 	).Scan(&room)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return "", false, nil
+		return OnDutyResult{}, nil
 	}
 	if err != nil {
-		return "", false, err
+		return OnDutyResult{}, err
 	}
-	return room, true, nil
+	return OnDutyResult{Room: room}, nil
 }
 
 // GetUpcoming returns n consecutive weekly entries for dutyType starting from the week of from.
 // Weeks with no DB row get an empty Room field.
-func GetUpcoming(ctx context.Context, conn *pgx.Conn, dutyType string, from time.Time, n int) ([]Entry, error) {
+func GetUpcoming(ctx context.Context, conn *pgx.Conn, dutyType DutyType, from time.Time, n int) ([]Entry, error) {
 	weekStart := mondayOf(from)
 	rows, err := conn.Query(ctx,
 		`SELECT week_start, room FROM schedules
