@@ -1,13 +1,7 @@
 -include .env
 export
 
-.PHONY: run build test fmt vet lint tidy send
-
-run:
-	@go run .
-
-build:
-	@CGO_ENABLED=0 go build -ldflags="-s -w" -o out/main .
+.PHONY: test fmt vet lint tidy
 
 test:
 	@go test ./...
@@ -23,6 +17,3 @@ lint:
 
 tidy:
 	@go mod tidy
-
-send:
-	@SEND_NOW=1 go run .
