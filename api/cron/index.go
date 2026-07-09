@@ -17,7 +17,7 @@ import (
 	"github.com/nikitasomusev/kehrwoche/pkg/telegram"
 )
 
-var dutyTypes = []schedule.DutyType{schedule.DutyTypeToilet, schedule.DutyTypeHall}
+var dutyTypes = []schedule.DutyType{schedule.DutyTypeFloor, schedule.DutyTypeToilet, schedule.DutyTypeHall}
 
 func Handler(w http.ResponseWriter, r *http.Request) {
 	// Fail-closed: if the secret is not configured, deny all requests.
@@ -71,7 +71,7 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 		}
 		room := result.Room
 		if room == "" {
-			room = "keine Planung"
+			room = "—"
 		}
 		lines = append(lines, fmt.Sprintf("*%s*: %s", dutyType.Label(), room))
 	}

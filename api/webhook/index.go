@@ -26,6 +26,8 @@ var commands = map[string]cmdHandler{
 	"toilette_plan":    plan(schedule.DutyTypeToilet),
 	"treppenhaus":      wer(schedule.DutyTypeHall),
 	"treppenhaus_plan": plan(schedule.DutyTypeHall),
+	"etage":            wer(schedule.DutyTypeFloor),
+	"etage_plan":       plan(schedule.DutyTypeFloor),
 }
 
 func Handler(w http.ResponseWriter, r *http.Request) {

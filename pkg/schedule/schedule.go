@@ -13,6 +13,7 @@ const (
 	DutyTypeToilet  DutyType = "toilet"
 	DutyTypeLaundry DutyType = "laundry"
 	DutyTypeHall    DutyType = "hall"
+	DutyTypeFloor   DutyType = "floor"
 )
 
 // Label returns the German display name used in Telegram messages.
@@ -22,6 +23,8 @@ func (d DutyType) Label() string {
 		return "Toilette"
 	case DutyTypeHall:
 		return "Treppenhaus"
+	case DutyTypeFloor:
+		return "Etage"
 	case DutyTypeLaundry:
 		return "Waschküche"
 	default:
