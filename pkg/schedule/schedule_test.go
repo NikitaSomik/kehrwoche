@@ -62,6 +62,7 @@ func TestDutyTypeLabel(t *testing.T) {
 	}{
 		{DutyTypeToilet, "Toilette"},
 		{DutyTypeHall, "Treppenhaus"},
+		{DutyTypeFloor, "Etage"},
 		{DutyTypeLaundry, "Waschküche"},
 		{DutyType("unknown"), "unknown"},
 	}
