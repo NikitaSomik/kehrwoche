@@ -19,13 +19,13 @@ import (
 	"github.com/nikitasomusev/kehrwoche/pkg/telegram"
 )
 
-const dutyType = schedule.DutyTypeToilet
-
 type cmdHandler func(ctx context.Context, conn *pgx.Conn, now time.Time) (string, error)
 
 var commands = map[string]cmdHandler{
-	"wer":  handleWer,
-	"plan": handlePlan,
+	"toilette":         wer(schedule.DutyTypeToilet),
+	"toilette_plan":    plan(schedule.DutyTypeToilet),
+	"treppenhaus":      wer(schedule.DutyTypeHall),
+	"treppenhaus_plan": plan(schedule.DutyTypeHall),
 }
 
 func Handler(w http.ResponseWriter, r *http.Request) {
@@ -91,27 +91,31 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func handleWer(ctx context.Context, conn *pgx.Conn, now time.Time) (string, error) {
-	result, err := schedule.GetOnDuty(ctx, conn, dutyType, now)
-	if err != nil {
-		return "", err
+func wer(dutyType schedule.DutyType) cmdHandler {
+	return func(ctx context.Context, conn *pgx.Conn, now time.Time) (string, error) {
+		result, err := schedule.GetOnDuty(ctx, conn, dutyType, now)
+		if err != nil {
+			return "", err
+		}
+		return result.Format(dutyType.Label(), schedule.CleaningWindow(now)), nil
 	}
-	return result.Format(schedule.CleaningWindow(now)), nil
 }
 
-func handlePlan(ctx context.Context, conn *pgx.Conn, now time.Time) (string, error) {
-	entries, err := schedule.GetUpcoming(ctx, conn, dutyType, now, 4)
-	if err != nil {
-		return "", err
-	}
-	lines := make([]string, len(entries))
-	for i, e := range entries {
-		window := schedule.CleaningWindow(schedule.ParseWeekKey(e.Week))
-		room := e.Room
-		if room == "" {
-			room = "—"
+func plan(dutyType schedule.DutyType) cmdHandler {
+	return func(ctx context.Context, conn *pgx.Conn, now time.Time) (string, error) {
+		entries, err := schedule.GetUpcoming(ctx, conn, dutyType, now, 4)
+		if err != nil {
+			return "", err
 		}
-		lines[i] = fmt.Sprintf("%s: %s", window, room)
+		lines := make([]string, len(entries))
+		for i, e := range entries {
+			window := schedule.CleaningWindow(schedule.ParseWeekKey(e.Week))
+			room := e.Room
+			if room == "" {
+				room = "—"
+			}
+			lines[i] = fmt.Sprintf("%s: %s", window, room)
+		}
+		return fmt.Sprintf("📅 *%s — nächste 4 Wochen:*\n\n%s", dutyType.Label(), strings.Join(lines, "\n")), nil
 	}
-	return "📅 *Plan — nächste 4 Wochen:*\n\n" + strings.Join(lines, "\n"), nil
 }
