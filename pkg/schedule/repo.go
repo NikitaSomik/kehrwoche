@@ -8,9 +8,16 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
+// Querier is the subset of *pgx.Conn this package needs, so tests can pass a
+// fake implementation instead of a live Postgres connection.
+type Querier interface {
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
+}
+
 // GetOnDuty returns the on-duty result for dutyType for the week containing now.
 // OnDutyResult.Room is empty when no schedule entry exists for the week.
-func GetOnDuty(ctx context.Context, conn *pgx.Conn, dutyType DutyType, now time.Time) (OnDutyResult, error) {
+func GetOnDuty(ctx context.Context, conn Querier, dutyType DutyType, now time.Time) (OnDutyResult, error) {
 	var room string
 	err := conn.QueryRow(ctx,
 		`SELECT room FROM schedules WHERE week_start = $1 AND duty_type = $2`,
@@ -27,7 +34,7 @@ func GetOnDuty(ctx context.Context, conn *pgx.Conn, dutyType DutyType, now time.
 
 // GetUpcoming returns n consecutive weekly entries for dutyType starting from the week of from.
 // Weeks with no DB row get an empty Room field.
-func GetUpcoming(ctx context.Context, conn *pgx.Conn, dutyType DutyType, from time.Time, n int) ([]Entry, error) {
+func GetUpcoming(ctx context.Context, conn Querier, dutyType DutyType, from time.Time, n int) ([]Entry, error) {
 	weekStart := mondayOf(from)
 	rows, err := conn.Query(ctx,
 		`SELECT week_start, room FROM schedules
