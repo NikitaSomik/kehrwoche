@@ -11,10 +11,23 @@ type DutyType string
 
 const (
 	DutyTypeToilet  DutyType = "toilet"
-	DutyTypeFloor   DutyType = "floor"
 	DutyTypeLaundry DutyType = "laundry"
 	DutyTypeHall    DutyType = "hall"
 )
+
+// Label returns the German display name used in Telegram messages.
+func (d DutyType) Label() string {
+	switch d {
+	case DutyTypeToilet:
+		return "Toilette"
+	case DutyTypeHall:
+		return "Treppenhaus"
+	case DutyTypeLaundry:
+		return "Waschküche"
+	default:
+		return string(d)
+	}
+}
 
 type Entry struct {
 	Week string
@@ -43,19 +56,11 @@ type OnDutyResult struct {
 }
 
 // Format returns a short reply for on-demand commands like /wer.
-func (r OnDutyResult) Format(window string) string {
+func (r OnDutyResult) Format(label, window string) string {
 	if r.Room == "" {
-		return fmt.Sprintf("❓ %s: keine Planung.", window)
+		return fmt.Sprintf("❓ %s (%s): keine Planung.", label, window)
 	}
-	return fmt.Sprintf("🏠 %s: *%s*", window, r.Room)
-}
-
-// FormatReminder returns a verbose weekly reminder message for cron notifications.
-func (r OnDutyResult) FormatReminder(window string) string {
-	if r.Room == "" {
-		return fmt.Sprintf("🏠 *Toilette — %s*\n\nKeine Planung für diese Woche.", window)
-	}
-	return fmt.Sprintf("🏠 *Toilette — %s*\n\nErinnerung: *%s* ist diese Woche für die Toilette zuständig.", window, r.Room)
+	return fmt.Sprintf("🏠 %s (%s): *%s*", label, window, r.Room)
 }
 
 // WeekKey returns the ISO week key for a time, e.g. "2026-W25".
