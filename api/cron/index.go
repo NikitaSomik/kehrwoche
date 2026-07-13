@@ -17,7 +17,7 @@ import (
 	"github.com/nikitasomusev/kehrwoche/pkg/telegram"
 )
 
-var dutyTypes = []schedule.DutyType{schedule.DutyTypeFloor, schedule.DutyTypeToilet, schedule.DutyTypeHall}
+var dutyTypes = []schedule.DutyType{schedule.DutyTypeFloor, schedule.DutyTypeToilet1, schedule.DutyTypeToilet2, schedule.DutyTypeHall}
 
 func Handler(w http.ResponseWriter, r *http.Request) {
 	// Fail-closed: if the secret is not configured, deny all requests.

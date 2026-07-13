@@ -60,7 +60,8 @@ func TestDutyTypeLabel(t *testing.T) {
 		dutyType DutyType
 		want     string
 	}{
-		{DutyTypeToilet, "Toilette"},
+		{DutyTypeToilet1, "Toilette 1"},
+		{DutyTypeToilet2, "Toilette 2"},
 		{DutyTypeHall, "Treppenhaus"},
 		{DutyTypeFloor, "Etage"},
 		{DutyTypeLaundry, "Waschküche"},

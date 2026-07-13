@@ -10,7 +10,8 @@ import (
 type DutyType string
 
 const (
-	DutyTypeToilet  DutyType = "toilet"
+	DutyTypeToilet1 DutyType = "toilet1"
+	DutyTypeToilet2 DutyType = "toilet2"
 	DutyTypeLaundry DutyType = "laundry"
 	DutyTypeHall    DutyType = "hall"
 	DutyTypeFloor   DutyType = "floor"
@@ -19,8 +20,10 @@ const (
 // Label returns the German display name used in Telegram messages.
 func (d DutyType) Label() string {
 	switch d {
-	case DutyTypeToilet:
-		return "Toilette"
+	case DutyTypeToilet1:
+		return "Toilette 1"
+	case DutyTypeToilet2:
+		return "Toilette 2"
 	case DutyTypeHall:
 		return "Treppenhaus"
 	case DutyTypeFloor:
