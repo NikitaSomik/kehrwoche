@@ -94,7 +94,7 @@ func TestGetOnDuty(t *testing.T) {
 
 	t.Run("room assigned", func(t *testing.T) {
 		q := fakeQuerier{row: fakeRow{room: "Zimmer 1"}}
-		got, err := GetOnDuty(context.Background(), q, DutyTypeToilet, now)
+		got, err := GetOnDuty(context.Background(), q, DutyTypeToilet1, now)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -105,7 +105,7 @@ func TestGetOnDuty(t *testing.T) {
 
 	t.Run("no rows", func(t *testing.T) {
 		q := fakeQuerier{row: fakeRow{err: pgx.ErrNoRows}}
-		got, err := GetOnDuty(context.Background(), q, DutyTypeToilet, now)
+		got, err := GetOnDuty(context.Background(), q, DutyTypeToilet1, now)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -117,7 +117,7 @@ func TestGetOnDuty(t *testing.T) {
 	t.Run("query error", func(t *testing.T) {
 		wantErr := errors.New("connection reset")
 		q := fakeQuerier{row: fakeRow{err: wantErr}}
-		_, err := GetOnDuty(context.Background(), q, DutyTypeToilet, now)
+		_, err := GetOnDuty(context.Background(), q, DutyTypeToilet1, now)
 		if !errors.Is(err, wantErr) {
 			t.Errorf("got err %v, want %v", err, wantErr)
 		}
@@ -135,7 +135,7 @@ func TestGetUpcoming(t *testing.T) {
 			{weekStart: week3, room: "Zimmer 6"},
 		}}}
 
-		got, err := GetUpcoming(context.Background(), q, DutyTypeToilet, from, 4)
+		got, err := GetUpcoming(context.Background(), q, DutyTypeToilet1, from, 4)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -159,7 +159,7 @@ func TestGetUpcoming(t *testing.T) {
 	t.Run("query error", func(t *testing.T) {
 		wantErr := errors.New("connection reset")
 		q := fakeQuerier{queryErr: wantErr}
-		_, err := GetUpcoming(context.Background(), q, DutyTypeToilet, from, 4)
+		_, err := GetUpcoming(context.Background(), q, DutyTypeToilet1, from, 4)
 		if !errors.Is(err, wantErr) {
 			t.Errorf("got err %v, want %v", err, wantErr)
 		}
