@@ -22,8 +22,10 @@ import (
 type cmdHandler func(ctx context.Context, conn *pgx.Conn, now time.Time) (string, error)
 
 var commands = map[string]cmdHandler{
-	"toilette":         wer(schedule.DutyTypeToilet),
-	"toilette_plan":    plan(schedule.DutyTypeToilet),
+	"toilette1":        wer(schedule.DutyTypeToilet1),
+	"toilette1_plan":   plan(schedule.DutyTypeToilet1),
+	"toilette2":        wer(schedule.DutyTypeToilet2),
+	"toilette2_plan":   plan(schedule.DutyTypeToilet2),
 	"treppenhaus":      wer(schedule.DutyTypeHall),
 	"treppenhaus_plan": plan(schedule.DutyTypeHall),
 	"etage":            wer(schedule.DutyTypeFloor),
