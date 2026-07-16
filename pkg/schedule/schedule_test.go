@@ -5,56 +5,6 @@ import (
 	"time"
 )
 
-func TestWeekKey(t *testing.T) {
-	cases := []struct {
-		date string
-		want string
-	}{
-		{"2026-06-15", "2026-W25"},
-		{"2026-01-01", "2026-W01"},
-		{"2025-12-29", "2026-W01"},
-		{"2026-12-28", "2026-W53"},
-	}
-	for _, tc := range cases {
-		t.Run(tc.date, func(t *testing.T) {
-			d, _ := time.Parse("2006-01-02", tc.date)
-			if got := WeekKey(d); got != tc.want {
-				t.Errorf("got %s, want %s", got, tc.want)
-			}
-		})
-	}
-}
-
-func TestParseWeekKey(t *testing.T) {
-	cases := []struct {
-		key  string
-		want string
-	}{
-		{"2026-W25", "2026-06-15"},
-		{"2026-W01", "2025-12-29"},
-		{"2026-W53", "2026-12-28"},
-	}
-	for _, tc := range cases {
-		t.Run(tc.key, func(t *testing.T) {
-			got := ParseWeekKey(tc.key).Format("2006-01-02")
-			if got != tc.want {
-				t.Errorf("got %s, want %s", got, tc.want)
-			}
-		})
-	}
-}
-
-func TestParseWeekKeyMalformed(t *testing.T) {
-	cases := []string{"invalid", "", "2026W25", "W25"}
-	for _, key := range cases {
-		t.Run(key, func(t *testing.T) {
-			if got := ParseWeekKey(key); !got.IsZero() {
-				t.Errorf("ParseWeekKey(%q) = %v, want zero time", key, got)
-			}
-		})
-	}
-}
-
 func TestDutyTypeLabel(t *testing.T) {
 	cases := []struct {
 		dutyType DutyType
@@ -73,6 +23,81 @@ func TestDutyTypeLabel(t *testing.T) {
 				t.Errorf("got %q, want %q", got, tc.want)
 			}
 		})
+	}
+}
+
+func TestEventDate(t *testing.T) {
+	cases := []struct {
+		name string
+		duty DutyType
+		date string
+		want string
+	}{
+		// weekly duties resolve to the Friday of the ISO week, from any weekday
+		{"weekly monday", DutyTypeToilet1, "2026-06-15", "2026-06-19"},
+		{"weekly thursday", DutyTypeFloor, "2026-06-18", "2026-06-19"},
+		{"weekly friday", DutyTypeHall, "2026-06-19", "2026-06-19"},
+		{"weekly sunday", DutyTypeToilet2, "2026-06-21", "2026-06-19"},
+		// laundry: Tuesday slot for Mon–Thu, Friday slot for Fri–Sun
+		{"laundry monday", DutyTypeLaundry, "2026-07-13", "2026-07-14"},
+		{"laundry tuesday", DutyTypeLaundry, "2026-07-14", "2026-07-14"},
+		{"laundry thursday", DutyTypeLaundry, "2026-07-16", "2026-07-14"},
+		{"laundry friday", DutyTypeLaundry, "2026-07-17", "2026-07-17"},
+		{"laundry sunday", DutyTypeLaundry, "2026-07-19", "2026-07-17"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			d, _ := time.Parse("2006-01-02", tc.date)
+			if got := tc.duty.EventDate(d).Format("2006-01-02"); got != tc.want {
+				t.Errorf("got %s, want %s", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestNextEventDate(t *testing.T) {
+	// weekly steps by 7 days; laundry alternates Tue→Fri (+3) then Fri→Tue (+4)
+	weeklyFrom, _ := time.Parse("2006-01-02", "2026-06-19")
+	if got := DutyTypeToilet1.NextEventDate(weeklyFrom).Format("2006-01-02"); got != "2026-06-26" {
+		t.Errorf("weekly next: got %s, want 2026-06-26", got)
+	}
+	tue, _ := time.Parse("2006-01-02", "2026-07-14")
+	if got := DutyTypeLaundry.NextEventDate(tue).Format("2006-01-02"); got != "2026-07-17" {
+		t.Errorf("laundry Tue→Fri: got %s, want 2026-07-17", got)
+	}
+	fri, _ := time.Parse("2006-01-02", "2026-07-17")
+	if got := DutyTypeLaundry.NextEventDate(fri).Format("2006-01-02"); got != "2026-07-21" {
+		t.Errorf("laundry Fri→Tue: got %s, want 2026-07-21", got)
+	}
+}
+
+func TestDutyTypeWindow(t *testing.T) {
+	cases := []struct {
+		name string
+		duty DutyType
+		date string
+		want string
+	}{
+		{"weekly range", DutyTypeToilet1, "2026-06-18", "19.06 – 21.06"},
+		{"laundry tuesday", DutyTypeLaundry, "2026-07-15", "Di, 14.07"},
+		{"laundry friday", DutyTypeLaundry, "2026-07-17", "Fr, 17.07"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			d, _ := time.Parse("2006-01-02", tc.date)
+			if got := tc.duty.Window(d); got != tc.want {
+				t.Errorf("got %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestDutyTypePlanCount(t *testing.T) {
+	if got := DutyTypeToilet1.PlanCount(); got != 4 {
+		t.Errorf("weekly: got %d, want 4", got)
+	}
+	if got := DutyTypeLaundry.PlanCount(); got != 8 {
+		t.Errorf("laundry: got %d, want 8", got)
 	}
 }
 

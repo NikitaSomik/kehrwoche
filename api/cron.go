@@ -17,9 +17,25 @@ import (
 	"github.com/nikitasomusev/kehrwoche/pkg/telegram"
 )
 
-var dutyTypes = []schedule.DutyType{schedule.DutyTypeFloor, schedule.DutyTypeToilet1, schedule.DutyTypeToilet2, schedule.DutyTypeHall}
+var weeklyDuties = []schedule.DutyType{
+	schedule.DutyTypeFloor, schedule.DutyTypeToilet1,
+	schedule.DutyTypeToilet2, schedule.DutyTypeHall,
+}
 
-func Handler(w http.ResponseWriter, r *http.Request) {
+// dutiesFor picks the duties a reminder covers on a weekday: weekly duties on
+// Thursday (ahead of the Fri–Sun window), laundry on its Tue/Fri days.
+func dutiesFor(weekday time.Weekday) []schedule.DutyType {
+	switch weekday {
+	case time.Thursday:
+		return weeklyDuties
+	case time.Tuesday, time.Friday:
+		return []schedule.DutyType{schedule.DutyTypeLaundry}
+	default:
+		return nil
+	}
+}
+
+func Cron(w http.ResponseWriter, r *http.Request) {
 	// Fail-closed: if the secret is not configured, deny all requests.
 	cronSecret := os.Getenv("CRON_SECRET")
 	if cronSecret == "" || r.Header.Get("Authorization") != "Bearer "+cronSecret {
@@ -50,7 +66,12 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 	}
 	now := time.Now().In(loc)
 
-	window := schedule.CleaningWindow(now)
+	duties := dutiesFor(now.Weekday())
+	if len(duties) == 0 {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+	window := duties[0].Window(now)
 
 	chatID, err := strconv.ParseInt(os.Getenv("CHAT_ID"), 10, 64)
 	if err != nil {
@@ -62,7 +83,7 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 	// One duty type's query failure doesn't drop the others from the reminder.
 	var lines []string
 	var failed bool
-	for _, dutyType := range dutyTypes {
+	for _, dutyType := range duties {
 		result, err := schedule.GetOnDuty(ctx, conn, dutyType, now)
 		if err != nil {
 			log.Printf("cron: get on duty (%s): %v", dutyType, err)
