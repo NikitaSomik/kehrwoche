@@ -35,11 +35,14 @@ func GetUpcoming(ctx context.Context, conn Querier, dutyType DutyType, from time
 		dates[i] = dutyType.NextEventDate(dates[i-1])
 	}
 
+	// Match the exact computed dates rather than "next n rows from dates[0]":
+	// a gap in the schedule (a missing row for one date) would otherwise let
+	// LIMIT pull in a row past the display window, silently misaligning the
+	// results with the dates being rendered.
 	rows, err := conn.Query(ctx,
 		`SELECT duty_date, room FROM schedules
-		 WHERE duty_type = $1 AND duty_date >= $2
-		 ORDER BY duty_date LIMIT $3`,
-		dutyType, dates[0], n,
+		 WHERE duty_type = $1 AND duty_date = ANY($2::date[])`,
+		dutyType, dates,
 	)
 	if err != nil {
 		return nil, err
