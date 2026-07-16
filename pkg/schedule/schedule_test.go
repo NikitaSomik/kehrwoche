@@ -5,6 +5,14 @@ import (
 	"time"
 )
 
+func TestAllDutyTypesHaveConfig(t *testing.T) {
+	for _, d := range []DutyType{DutyTypeToilet1, DutyTypeToilet2, DutyTypeHall, DutyTypeFloor, DutyTypeLaundry} {
+		if c := configs[d]; len(c.days) == 0 || c.window == 0 {
+			t.Errorf("%s: no cadence config registered", d)
+		}
+	}
+}
+
 func TestDutyTypeLabel(t *testing.T) {
 	cases := []struct {
 		dutyType DutyType
@@ -38,12 +46,14 @@ func TestEventDate(t *testing.T) {
 		{"weekly thursday", DutyTypeFloor, "2026-06-18", "2026-06-19"},
 		{"weekly friday", DutyTypeHall, "2026-06-19", "2026-06-19"},
 		{"weekly sunday", DutyTypeToilet2, "2026-06-21", "2026-06-19"},
-		// laundry: Tuesday slot for Mon–Thu, Friday slot for Fri–Sun
+		// laundry resolves to the next duty day still ahead, never one that has passed
 		{"laundry monday", DutyTypeLaundry, "2026-07-13", "2026-07-14"},
 		{"laundry tuesday", DutyTypeLaundry, "2026-07-14", "2026-07-14"},
-		{"laundry thursday", DutyTypeLaundry, "2026-07-16", "2026-07-14"},
+		{"laundry wednesday", DutyTypeLaundry, "2026-07-15", "2026-07-17"},
+		{"laundry thursday", DutyTypeLaundry, "2026-07-16", "2026-07-17"},
 		{"laundry friday", DutyTypeLaundry, "2026-07-17", "2026-07-17"},
-		{"laundry sunday", DutyTypeLaundry, "2026-07-19", "2026-07-17"},
+		{"laundry saturday", DutyTypeLaundry, "2026-07-18", "2026-07-21"},
+		{"laundry sunday", DutyTypeLaundry, "2026-07-19", "2026-07-21"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -79,7 +89,8 @@ func TestDutyTypeWindow(t *testing.T) {
 		want string
 	}{
 		{"weekly range", DutyTypeToilet1, "2026-06-18", "19.06 – 21.06"},
-		{"laundry tuesday", DutyTypeLaundry, "2026-07-15", "Di, 14.07"},
+		{"laundry tuesday", DutyTypeLaundry, "2026-07-14", "Di, 14.07"},
+		{"laundry wednesday", DutyTypeLaundry, "2026-07-15", "Fr, 17.07"},
 		{"laundry friday", DutyTypeLaundry, "2026-07-17", "Fr, 17.07"},
 	}
 	for _, tc := range cases {
