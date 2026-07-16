@@ -18,9 +18,18 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/nikitasomusev/kehrwoche/pkg/db"
 	"github.com/nikitasomusev/kehrwoche/pkg/schedule"
 )
+
+// txQuerier is the subset of pgx.Tx that planDuty/lastRow actually use —
+// narrower than the full transaction interface so the room-rotation logic
+// is testable with a fake, without a real DB transaction.
+type txQuerier interface {
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
+}
 
 var rotations = map[schedule.DutyType][]int{
 	schedule.DutyTypeToilet1: {4, 3, 7},
@@ -117,7 +126,7 @@ type plannedRow struct {
 	room int
 }
 
-func planDuty(ctx context.Context, tx pgx.Tx, duty schedule.DutyType, active []int, n int, startStr string, regen bool) ([]plannedRow, error) {
+func planDuty(ctx context.Context, tx txQuerier, duty schedule.DutyType, active []int, n int, startStr string, regen bool) ([]plannedRow, error) {
 	last, hasLast, err := lastRow(ctx, tx, duty)
 	if err != nil {
 		return nil, err
@@ -162,7 +171,7 @@ type dbRow struct {
 	room int
 }
 
-func lastRow(ctx context.Context, tx pgx.Tx, duty schedule.DutyType) (dbRow, bool, error) {
+func lastRow(ctx context.Context, tx txQuerier, duty schedule.DutyType) (dbRow, bool, error) {
 	var date time.Time
 	var name string
 	err := tx.QueryRow(ctx,
@@ -176,7 +185,7 @@ func lastRow(ctx context.Context, tx pgx.Tx, duty schedule.DutyType) (dbRow, boo
 	if err != nil {
 		return dbRow{}, false, err
 	}
-	num, err := roomNumber(name)
+	num, err := schedule.ParseRoomNo(name)
 	if err != nil {
 		return dbRow{}, false, err
 	}
@@ -242,12 +251,4 @@ func resolveVacant(flagVal string) (map[int]bool, error) {
 		vacant[n] = true
 	}
 	return vacant, nil
-}
-
-func roomNumber(name string) (int, error) {
-	n, err := strconv.Atoi(strings.TrimSpace(strings.TrimPrefix(name, "Zimmer")))
-	if err != nil {
-		return 0, fmt.Errorf("unexpected room name %q", name)
-	}
-	return n, nil
 }

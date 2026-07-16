@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"crypto/subtle"
 	"fmt"
 	"log"
 	"net/http"
@@ -22,13 +23,19 @@ var weeklyDuties = []schedule.DutyType{
 	schedule.DutyTypeToilet2, schedule.DutyTypeHall,
 }
 
-// dutiesFor picks the duties a reminder covers on a weekday: weekly duties on
-// Thursday (ahead of the Fri–Sun window), laundry on its Tue/Fri days.
+// weeklyReminderDay is one day ahead of the weekly duties' shared event day,
+// derived from pkg/schedule so the reminder can't drift out of sync with the
+// cadence it's announcing. Wraps mod 7 so it stays correct even if the event
+// day were ever Sunday.
+var weeklyReminderDay = time.Weekday((int(weeklyDuties[0].EventWeekdays()[0]) + 6) % 7)
+
+// dutiesFor picks the duties a reminder covers on a weekday: weekly duties
+// the day before their shared event day, laundry on its own event days.
 func dutiesFor(weekday time.Weekday) []schedule.DutyType {
-	switch weekday {
-	case time.Thursday:
+	switch {
+	case weekday == weeklyReminderDay:
 		return weeklyDuties
-	case time.Tuesday, time.Friday:
+	case schedule.DutyTypeLaundry.IsEventDay(weekday):
 		return []schedule.DutyType{schedule.DutyTypeLaundry}
 	default:
 		return nil
@@ -37,8 +44,11 @@ func dutiesFor(weekday time.Weekday) []schedule.DutyType {
 
 func Cron(w http.ResponseWriter, r *http.Request) {
 	// Fail-closed: if the secret is not configured, deny all requests.
+	// Constant-time comparison to avoid a timing side-channel on the secret.
 	cronSecret := os.Getenv("CRON_SECRET")
-	if cronSecret == "" || r.Header.Get("Authorization") != "Bearer "+cronSecret {
+	got := r.Header.Get("Authorization")
+	want := "Bearer " + cronSecret
+	if cronSecret == "" || subtle.ConstantTimeCompare([]byte(got), []byte(want)) != 1 {
 		w.WriteHeader(http.StatusUnauthorized)
 		return
 	}
@@ -99,7 +109,7 @@ func Cron(w http.ResponseWriter, r *http.Request) {
 
 	if len(lines) > 0 {
 		text := fmt.Sprintf("🏠 *Erinnerung — %s*\n\n%s", window, strings.Join(lines, "\n"))
-		if err := telegram.Send(ctx, os.Getenv("TELEGRAM_BOT_TOKEN"), chatID, text); err != nil {
+		if err := telegram.Send(ctx, http.DefaultClient, os.Getenv("TELEGRAM_BOT_TOKEN"), chatID, text); err != nil {
 			log.Printf("cron: send: %v", err)
 			failed = true
 		}

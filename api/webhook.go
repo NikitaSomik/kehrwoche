@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"crypto/subtle"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -13,13 +14,12 @@ import (
 	_ "time/tzdata"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
-	"github.com/jackc/pgx/v5"
 	"github.com/nikitasomusev/kehrwoche/pkg/db"
 	"github.com/nikitasomusev/kehrwoche/pkg/schedule"
 	"github.com/nikitasomusev/kehrwoche/pkg/telegram"
 )
 
-type cmdHandler func(ctx context.Context, conn *pgx.Conn, now time.Time) (string, error)
+type cmdHandler func(ctx context.Context, conn schedule.Querier, now time.Time) (string, error)
 
 var commands = map[string]cmdHandler{
 	"toilette1":        wer(schedule.DutyTypeToilet1),
@@ -42,8 +42,10 @@ func Webhook(w http.ResponseWriter, r *http.Request) {
 
 	// Reject requests without the Telegram webhook secret to block fake updates.
 	// Fail-closed: if the secret is not configured, deny all requests.
+	// Constant-time comparison to avoid a timing side-channel on the secret.
 	secret := os.Getenv("WEBHOOK_SECRET")
-	if secret == "" || r.Header.Get("X-Telegram-Bot-Api-Secret-Token") != secret {
+	got := r.Header.Get("X-Telegram-Bot-Api-Secret-Token")
+	if secret == "" || subtle.ConstantTimeCompare([]byte(got), []byte(secret)) != 1 {
 		w.WriteHeader(http.StatusUnauthorized)
 		return
 	}
@@ -92,13 +94,13 @@ func Webhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := telegram.Send(ctx, os.Getenv("TELEGRAM_BOT_TOKEN"), update.Message.Chat.ID, text); err != nil {
+	if err := telegram.Send(ctx, http.DefaultClient, os.Getenv("TELEGRAM_BOT_TOKEN"), update.Message.Chat.ID, text); err != nil {
 		log.Printf("webhook: send: %v", err)
 	}
 }
 
 func wer(dutyType schedule.DutyType) cmdHandler {
-	return func(ctx context.Context, conn *pgx.Conn, now time.Time) (string, error) {
+	return func(ctx context.Context, conn schedule.Querier, now time.Time) (string, error) {
 		result, err := schedule.GetOnDuty(ctx, conn, dutyType, now)
 		if err != nil {
 			return "", err
@@ -108,7 +110,7 @@ func wer(dutyType schedule.DutyType) cmdHandler {
 }
 
 func plan(dutyType schedule.DutyType) cmdHandler {
-	return func(ctx context.Context, conn *pgx.Conn, now time.Time) (string, error) {
+	return func(ctx context.Context, conn schedule.Querier, now time.Time) (string, error) {
 		entries, err := schedule.GetUpcoming(ctx, conn, dutyType, now, dutyType.PlanCount())
 		if err != nil {
 			return "", err
@@ -121,6 +123,6 @@ func plan(dutyType schedule.DutyType) cmdHandler {
 			}
 			lines[i] = fmt.Sprintf("%s: %s", dutyType.Window(e.Date), room)
 		}
-		return fmt.Sprintf("📅 *%s — nächste 4 Wochen:*\n\n%s", dutyType.Label(), strings.Join(lines, "\n")), nil
+		return fmt.Sprintf("📅 *%s — nächste %d Wochen:*\n\n%s", dutyType.Label(), schedule.PlanWeeks, strings.Join(lines, "\n")), nil
 	}
 }
