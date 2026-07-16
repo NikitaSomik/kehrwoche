@@ -30,9 +30,11 @@ var commands = map[string]cmdHandler{
 	"treppenhaus_plan": plan(schedule.DutyTypeHall),
 	"etage":            wer(schedule.DutyTypeFloor),
 	"etage_plan":       plan(schedule.DutyTypeFloor),
+	"waschkueche":      wer(schedule.DutyTypeLaundry),
+	"waschkueche_plan": plan(schedule.DutyTypeLaundry),
 }
 
-func Handler(w http.ResponseWriter, r *http.Request) {
+func Webhook(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
@@ -101,24 +103,23 @@ func wer(dutyType schedule.DutyType) cmdHandler {
 		if err != nil {
 			return "", err
 		}
-		return result.Format(dutyType.Label(), schedule.CleaningWindow(now)), nil
+		return result.Format(dutyType.Label(), dutyType.Window(now)), nil
 	}
 }
 
 func plan(dutyType schedule.DutyType) cmdHandler {
 	return func(ctx context.Context, conn *pgx.Conn, now time.Time) (string, error) {
-		entries, err := schedule.GetUpcoming(ctx, conn, dutyType, now, 4)
+		entries, err := schedule.GetUpcoming(ctx, conn, dutyType, now, dutyType.PlanCount())
 		if err != nil {
 			return "", err
 		}
 		lines := make([]string, len(entries))
 		for i, e := range entries {
-			window := schedule.CleaningWindow(schedule.ParseWeekKey(e.Week))
 			room := e.Room
 			if room == "" {
 				room = "—"
 			}
-			lines[i] = fmt.Sprintf("%s: %s", window, room)
+			lines[i] = fmt.Sprintf("%s: %s", dutyType.Window(e.Date), room)
 		}
 		return fmt.Sprintf("📅 *%s — nächste 4 Wochen:*\n\n%s", dutyType.Label(), strings.Join(lines, "\n")), nil
 	}

@@ -125,14 +125,15 @@ func TestGetOnDuty(t *testing.T) {
 }
 
 func TestGetUpcoming(t *testing.T) {
+	// Thursday 2026-06-18 → weekly event days are the Fridays 06-19, 06-26, 07-03, 07-10.
 	from, _ := time.Parse("2006-01-02", "2026-06-18")
-	week1, _ := time.Parse("2006-01-02", "2026-06-15")
-	week3, _ := time.Parse("2006-01-02", "2026-06-29")
+	fri1 := mustDate("2026-06-19")
+	fri3 := mustDate("2026-07-03")
 
 	t.Run("fills gaps with empty room", func(t *testing.T) {
 		q := fakeQuerier{rows: &fakeRows{data: []fakeRowData{
-			{weekStart: week1, room: "Zimmer 1"},
-			{weekStart: week3, room: "Zimmer 6"},
+			{weekStart: fri1, room: "Zimmer 1"},
+			{weekStart: fri3, room: "Zimmer 6"},
 		}}}
 
 		got, err := GetUpcoming(context.Background(), q, DutyTypeToilet1, from, 4)
@@ -141,19 +142,12 @@ func TestGetUpcoming(t *testing.T) {
 		}
 
 		want := []Entry{
-			{Week: "2026-W25", Room: "Zimmer 1"},
-			{Week: "2026-W26", Room: ""},
-			{Week: "2026-W27", Room: "Zimmer 6"},
-			{Week: "2026-W28", Room: ""},
+			{Date: mustDate("2026-06-19"), Room: "Zimmer 1"},
+			{Date: mustDate("2026-06-26"), Room: ""},
+			{Date: mustDate("2026-07-03"), Room: "Zimmer 6"},
+			{Date: mustDate("2026-07-10"), Room: ""},
 		}
-		if len(got) != len(want) {
-			t.Fatalf("got %d entries, want %d", len(got), len(want))
-		}
-		for i := range want {
-			if got[i] != want[i] {
-				t.Errorf("entry %d: got %+v, want %+v", i, got[i], want[i])
-			}
-		}
+		assertEntries(t, got, want)
 	})
 
 	t.Run("query error", func(t *testing.T) {
@@ -164,4 +158,50 @@ func TestGetUpcoming(t *testing.T) {
 			t.Errorf("got err %v, want %v", err, wantErr)
 		}
 	})
+}
+
+func TestGetUpcomingLaundry(t *testing.T) {
+	// Monday 2026-07-13 → laundry slots alternate Tue/Fri: 07-14, 07-17, 07-21, 07-24.
+	// 07-14 (Tue) and 07-17 (Fri) share ISO week 29 — distinct dates must not collide.
+	from, _ := time.Parse("2006-01-02", "2026-07-13")
+	tue1 := mustDate("2026-07-14")
+	fri1 := mustDate("2026-07-17")
+
+	q := fakeQuerier{rows: &fakeRows{data: []fakeRowData{
+		{weekStart: tue1, room: "Zimmer 8"},
+		{weekStart: fri1, room: "Zimmer 1"},
+	}}}
+
+	got, err := GetUpcoming(context.Background(), q, DutyTypeLaundry, from, 4)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	want := []Entry{
+		{Date: mustDate("2026-07-14"), Room: "Zimmer 8"},
+		{Date: mustDate("2026-07-17"), Room: "Zimmer 1"},
+		{Date: mustDate("2026-07-21"), Room: ""},
+		{Date: mustDate("2026-07-24"), Room: ""},
+	}
+	assertEntries(t, got, want)
+}
+
+func mustDate(s string) time.Time {
+	d, err := time.Parse("2006-01-02", s)
+	if err != nil {
+		panic(err)
+	}
+	return d
+}
+
+func assertEntries(t *testing.T, got, want []Entry) {
+	t.Helper()
+	if len(got) != len(want) {
+		t.Fatalf("got %d entries, want %d", len(got), len(want))
+	}
+	for i := range want {
+		if !got[i].Date.Equal(want[i].Date) || got[i].Room != want[i].Room {
+			t.Errorf("entry %d: got %+v, want %+v", i, got[i], want[i])
+		}
+	}
 }
