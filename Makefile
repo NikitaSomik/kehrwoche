@@ -1,7 +1,7 @@
 -include .env
 export
 
-.PHONY: test fmt vet lint tidy
+.PHONY: test fmt vet lint tidy migrate seed
 
 test:
 	@go test ./...
@@ -17,3 +17,9 @@ lint:
 
 tidy:
 	@go mod tidy
+
+migrate:
+	@go run ./cmd/migrate
+
+seed:
+	@go run ./cmd/seed
