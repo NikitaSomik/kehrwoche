@@ -14,9 +14,9 @@ import (
 	_ "time/tzdata"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
-	"github.com/nikitasomusev/kehrwoche/pkg/db"
-	"github.com/nikitasomusev/kehrwoche/pkg/schedule"
-	"github.com/nikitasomusev/kehrwoche/pkg/telegram"
+	"github.com/nikitasomusev/kehrwoche/internal/db"
+	"github.com/nikitasomusev/kehrwoche/internal/schedule"
+	"github.com/nikitasomusev/kehrwoche/internal/telegram"
 )
 
 type cmdHandler func(ctx context.Context, conn schedule.Querier, now time.Time) (string, error)

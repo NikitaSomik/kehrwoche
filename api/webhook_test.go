@@ -9,7 +9,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
-	"github.com/nikitasomusev/kehrwoche/pkg/schedule"
+	"github.com/nikitasomusev/kehrwoche/internal/schedule"
 )
 
 // fakeRow implements pgx.Row for wer() tests.

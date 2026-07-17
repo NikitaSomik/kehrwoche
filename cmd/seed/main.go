@@ -19,8 +19,8 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
-	"github.com/nikitasomusev/kehrwoche/pkg/db"
-	"github.com/nikitasomusev/kehrwoche/pkg/schedule"
+	"github.com/nikitasomusev/kehrwoche/internal/db"
+	"github.com/nikitasomusev/kehrwoche/internal/schedule"
 )
 
 // txQuerier is the subset of pgx.Tx that planDuty/lastRow actually use —

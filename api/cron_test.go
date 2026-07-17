@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/nikitasomusev/kehrwoche/pkg/schedule"
+	"github.com/nikitasomusev/kehrwoche/internal/schedule"
 )
 
 func TestDutiesFor(t *testing.T) {
