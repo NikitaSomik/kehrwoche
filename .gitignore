@@ -1,4 +1,5 @@
 .env
+schedule.json
 config.json
 out/
 *.exe

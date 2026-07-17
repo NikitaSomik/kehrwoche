@@ -13,9 +13,9 @@ import (
 
 	_ "time/tzdata"
 
-	"github.com/nikitasomusev/kehrwoche/internal/db"
-	"github.com/nikitasomusev/kehrwoche/internal/schedule"
-	"github.com/nikitasomusev/kehrwoche/internal/telegram"
+	"github.com/nikitasomusev/kehrwoche/pkg/db"
+	"github.com/nikitasomusev/kehrwoche/pkg/schedule"
+	"github.com/nikitasomusev/kehrwoche/pkg/telegram"
 )
 
 var weeklyDuties = []schedule.DutyType{

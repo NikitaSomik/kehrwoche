@@ -11,7 +11,7 @@ import (
 	"sort"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/nikitasomusev/kehrwoche/internal/db"
+	"github.com/nikitasomusev/kehrwoche/pkg/db"
 )
 
 func main() {
