@@ -19,6 +19,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/nikitasomusev/kehrwoche/pkg/config"
 	"github.com/nikitasomusev/kehrwoche/pkg/db"
 	"github.com/nikitasomusev/kehrwoche/pkg/schedule"
 )
@@ -73,7 +74,7 @@ func run(ctx context.Context, dutyStr string, nPeriods int, startStr, vacantStr 
 		return err
 	}
 
-	conn, err := db.Connect(ctx)
+	conn, err := db.Connect(ctx, config.Load().DatabaseURL)
 	if err != nil {
 		return err
 	}

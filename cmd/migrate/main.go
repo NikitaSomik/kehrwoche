@@ -11,6 +11,7 @@ import (
 	"sort"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/nikitasomusev/kehrwoche/pkg/config"
 	"github.com/nikitasomusev/kehrwoche/pkg/db"
 )
 
@@ -22,7 +23,7 @@ func main() {
 }
 
 func run(ctx context.Context) error {
-	conn, err := db.Connect(ctx)
+	conn, err := db.Connect(ctx, config.Load().DatabaseURL)
 	if err != nil {
 		return err
 	}

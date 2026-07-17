@@ -1,5 +1,10 @@
 # Kehrwoche
 
+![CI](https://github.com/NikitaSomik/kehrwoche/actions/workflows/ci.yml/badge.svg)
+![Go](https://img.shields.io/badge/Go-1.26-00ADD8?logo=go&logoColor=white)
+![Vercel](https://img.shields.io/badge/Vercel-serverless-000000?logo=vercel&logoColor=white)
+![golangci-lint](https://img.shields.io/badge/golangci--lint-enabled-brightgreen)
+
 A Telegram bot that reminds a shared flat (WG) group chat who's on cleaning duty this week.
 
 Runs as serverless Go functions on Vercel, with the rotation schedule stored in a Postgres database (Neon).

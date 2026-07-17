@@ -6,13 +6,13 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"os"
 	"strconv"
 	"strings"
 	"time"
 
 	_ "time/tzdata"
 
+	"github.com/nikitasomusev/kehrwoche/pkg/config"
 	"github.com/nikitasomusev/kehrwoche/pkg/db"
 	"github.com/nikitasomusev/kehrwoche/pkg/schedule"
 	"github.com/nikitasomusev/kehrwoche/pkg/telegram"
@@ -43,12 +43,13 @@ func dutiesFor(weekday time.Weekday) []schedule.DutyType {
 }
 
 func Cron(w http.ResponseWriter, r *http.Request) {
+	cfg := config.Load()
+
 	// Fail-closed: if the secret is not configured, deny all requests.
 	// Constant-time comparison to avoid a timing side-channel on the secret.
-	cronSecret := os.Getenv("CRON_SECRET")
 	got := r.Header.Get("Authorization")
-	want := "Bearer " + cronSecret
-	if cronSecret == "" || subtle.ConstantTimeCompare([]byte(got), []byte(want)) != 1 {
+	want := "Bearer " + cfg.CronSecret
+	if cfg.CronSecret == "" || subtle.ConstantTimeCompare([]byte(got), []byte(want)) != 1 {
 		w.WriteHeader(http.StatusUnauthorized)
 		return
 	}
@@ -56,7 +57,7 @@ func Cron(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
 	defer cancel()
 
-	conn, err := db.Connect(ctx)
+	conn, err := db.Connect(ctx, cfg.DatabaseURL)
 	if err != nil {
 		log.Printf("cron: db connect: %v", err)
 		http.Error(w, "db error", http.StatusInternalServerError)
@@ -83,7 +84,7 @@ func Cron(w http.ResponseWriter, r *http.Request) {
 	}
 	window := duties[0].Window(now)
 
-	chatID, err := strconv.ParseInt(os.Getenv("CHAT_ID"), 10, 64)
+	chatID, err := strconv.ParseInt(cfg.ChatID, 10, 64)
 	if err != nil {
 		log.Printf("cron: invalid CHAT_ID: %v", err)
 		http.Error(w, "config error", http.StatusInternalServerError)
@@ -109,7 +110,7 @@ func Cron(w http.ResponseWriter, r *http.Request) {
 
 	if len(lines) > 0 {
 		text := fmt.Sprintf("🏠 *Erinnerung — %s*\n\n%s", window, strings.Join(lines, "\n"))
-		if err := telegram.Send(ctx, http.DefaultClient, os.Getenv("TELEGRAM_BOT_TOKEN"), chatID, text); err != nil {
+		if err := telegram.Send(ctx, http.DefaultClient, cfg.TelegramToken, chatID, text); err != nil {
 			log.Printf("cron: send: %v", err)
 			failed = true
 		}

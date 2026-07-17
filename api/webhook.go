@@ -7,13 +7,13 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"os"
 	"strings"
 	"time"
 
 	_ "time/tzdata"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	"github.com/nikitasomusev/kehrwoche/pkg/config"
 	"github.com/nikitasomusev/kehrwoche/pkg/db"
 	"github.com/nikitasomusev/kehrwoche/pkg/schedule"
 	"github.com/nikitasomusev/kehrwoche/pkg/telegram"
@@ -40,12 +40,13 @@ func Webhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	cfg := config.Load()
+
 	// Reject requests without the Telegram webhook secret to block fake updates.
 	// Fail-closed: if the secret is not configured, deny all requests.
 	// Constant-time comparison to avoid a timing side-channel on the secret.
-	secret := os.Getenv("WEBHOOK_SECRET")
 	got := r.Header.Get("X-Telegram-Bot-Api-Secret-Token")
-	if secret == "" || subtle.ConstantTimeCompare([]byte(got), []byte(secret)) != 1 {
+	if cfg.WebhookSecret == "" || subtle.ConstantTimeCompare([]byte(got), []byte(cfg.WebhookSecret)) != 1 {
 		w.WriteHeader(http.StatusUnauthorized)
 		return
 	}
@@ -71,7 +72,7 @@ func Webhook(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
 	defer cancel()
 
-	conn, err := db.Connect(ctx)
+	conn, err := db.Connect(ctx, cfg.DatabaseURL)
 	if err != nil {
 		log.Printf("webhook: db connect: %v", err)
 		return
@@ -94,7 +95,7 @@ func Webhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := telegram.Send(ctx, http.DefaultClient, os.Getenv("TELEGRAM_BOT_TOKEN"), update.Message.Chat.ID, text); err != nil {
+	if err := telegram.Send(ctx, http.DefaultClient, cfg.TelegramToken, update.Message.Chat.ID, text); err != nil {
 		log.Printf("webhook: send: %v", err)
 	}
 }
