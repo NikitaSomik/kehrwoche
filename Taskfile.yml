@@ -1,0 +1,51 @@
+version: '3'
+
+dotenv: ['.env']
+
+tasks:
+  build:
+    desc: Build all packages
+    cmds:
+      - go build ./...
+
+  test:
+    desc: Run all tests
+    cmds:
+      - go test ./...
+
+  fmt:
+    desc: Format Go source files
+    cmds:
+      - gofmt -w .
+
+  vet:
+    desc: Run go vet
+    cmds:
+      - go vet ./...
+
+  lint:
+    desc: Run golangci-lint
+    cmds:
+      - golangci-lint run ./...
+
+  tidy:
+    desc: Tidy go.mod/go.sum
+    sources:
+      - go.mod
+      - go.sum
+      - '**/*.go'
+    cmds:
+      - go mod tidy
+
+  migrate:
+    desc: Run database migrations
+    sources:
+      - migrations/**/*.sql
+      - cmd/migrate/**/*.go
+    cmds:
+      - go run ./cmd/migrate
+
+  seed:
+    desc: Seed the database
+    cmds:
+      - go run ./cmd/seed
