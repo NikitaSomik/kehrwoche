@@ -17,7 +17,7 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - uses: arduino/setup-task@v2
+      - uses: arduino/setup-task@v3
 
       - name: Build
         run: task build
@@ -45,7 +45,7 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - uses: arduino/setup-task@v2
+      - uses: arduino/setup-task@v3
 
       - name: Apply migrations
         run: task migrate
