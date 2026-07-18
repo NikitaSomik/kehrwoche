@@ -27,12 +27,18 @@ Set the same variables in the Vercel project dashboard for deployment.
 
 ## Development
 
+Install [Task](https://taskfile.dev):
+
 ```bash
-make test     # run tests
-make vet      # go vet
-make lint     # golangci-lint
-make fmt      # gofmt
-make tidy     # tidy dependencies
-make migrate  # apply database migrations
-make seed     # seed the database
+brew install go-task/tap/go-task   # macOS
+```
+
+```bash
+task test     # run tests
+task vet      # go vet
+task lint     # golangci-lint
+task fmt      # gofmt
+task tidy     # tidy dependencies
+task migrate  # apply database migrations
+task seed     # seed the database
 ```
