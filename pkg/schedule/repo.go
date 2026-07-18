@@ -30,7 +30,7 @@ func GetOnDuty(ctx context.Context, conn Querier, dutyType DutyType, now time.Ti
 
 func GetUpcoming(ctx context.Context, conn Querier, dutyType DutyType, from time.Time, n int) ([]Entry, error) {
 	dates := make([]time.Time, n)
-	dates[0] = dutyType.EventDate(from)
+	dates[0] = dutyType.UpcomingEventDate(from)
 	for i := 1; i < n; i++ {
 		dates[i] = dutyType.NextEventDate(dates[i-1])
 	}

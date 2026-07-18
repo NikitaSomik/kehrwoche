@@ -158,6 +158,32 @@ func TestGetUpcoming(t *testing.T) {
 			t.Errorf("got err %v, want %v", err, wantErr)
 		}
 	})
+
+	t.Run("from inside an already-started window skips to the next one", func(t *testing.T) {
+		// Saturday 2026-06-20 falls inside the Fri 06-19 – Sun 06-21 window;
+		// the plan must lead with the next Friday, not the one already underway.
+		insideWindow := mustDate("2026-06-20")
+		fri2 := mustDate("2026-06-26")
+		fri4 := mustDate("2026-07-10")
+
+		q := fakeQuerier{rows: &fakeRows{data: []fakeRowData{
+			{weekStart: fri2, room: "Zimmer 2"},
+			{weekStart: fri4, room: "Zimmer 8"},
+		}}}
+
+		got, err := GetUpcoming(context.Background(), q, DutyTypeToilet1, insideWindow, 4)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		want := []Entry{
+			{Date: mustDate("2026-06-26"), Room: "Zimmer 2"},
+			{Date: mustDate("2026-07-03"), Room: ""},
+			{Date: mustDate("2026-07-10"), Room: "Zimmer 8"},
+			{Date: mustDate("2026-07-17"), Room: ""},
+		}
+		assertEntries(t, got, want)
+	})
 }
 
 func TestGetUpcomingLaundry(t *testing.T) {

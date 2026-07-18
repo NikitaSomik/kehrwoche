@@ -65,6 +65,31 @@ func TestEventDate(t *testing.T) {
 	}
 }
 
+func TestUpcomingEventDate(t *testing.T) {
+	cases := []struct {
+		name string
+		duty DutyType
+		date string
+		want string
+	}{
+		// unlike EventDate, a day inside an already-started window rolls
+		// forward to the next occurrence instead of resolving backward.
+		{"weekly friday (event day itself)", DutyTypeFloor, "2026-06-19", "2026-06-19"},
+		{"weekly saturday (inside window)", DutyTypeFloor, "2026-06-20", "2026-06-26"},
+		{"weekly sunday (inside window)", DutyTypeToilet2, "2026-06-21", "2026-06-26"},
+		{"weekly thursday (before window)", DutyTypeFloor, "2026-06-18", "2026-06-19"},
+		{"laundry saturday", DutyTypeLaundry, "2026-07-18", "2026-07-21"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			d, _ := time.Parse("2006-01-02", tc.date)
+			if got := tc.duty.UpcomingEventDate(d).Format("2006-01-02"); got != tc.want {
+				t.Errorf("got %s, want %s", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestNextEventDate(t *testing.T) {
 	// weekly steps by 7 days; laundry alternates Tue→Fri (+3) then Fri→Tue (+4)
 	weeklyFrom, _ := time.Parse("2006-01-02", "2026-06-19")
