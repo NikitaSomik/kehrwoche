@@ -28,9 +28,11 @@ Set the same variables in the Vercel project dashboard for deployment.
 ## Development
 
 ```bash
-make test   # run tests
-make vet    # go vet
-make lint   # golangci-lint
-make fmt    # gofmt
-make tidy   # tidy dependencies
+make test     # run tests
+make vet      # go vet
+make lint     # golangci-lint
+make fmt      # gofmt
+make tidy     # tidy dependencies
+make migrate  # apply database migrations
+make seed     # seed the database
 ```
