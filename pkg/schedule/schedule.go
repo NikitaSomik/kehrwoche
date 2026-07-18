@@ -88,6 +88,13 @@ func (d DutyType) NextEventDate(e time.Time) time.Time {
 	return nextWeekdayOnOrAfter(e.AddDate(0, 0, 1), configs[d].days...)
 }
 
+// UpcomingEventDate returns the next event day on or after t, ignoring
+// whether t already falls inside a previous event's window — used by plan
+// listings so they never lead with a day that's already in the past.
+func (d DutyType) UpcomingEventDate(t time.Time) time.Time {
+	return nextWeekdayOnOrAfter(t, configs[d].days...)
+}
+
 func (d DutyType) PlanCount() int {
 	return PlanWeeks * len(configs[d].days)
 }
