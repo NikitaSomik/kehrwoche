@@ -4,7 +4,7 @@ on:
   push:
     branches: [main, dev]
   pull_request:
-    branches: [main]
+    branches: [main, dev]
 
 jobs:
   test:
@@ -17,19 +17,21 @@ jobs:
         with:
           go-version-file: go.mod
 
+      - uses: arduino/setup-task@v2
+
       - name: Build
-        run: go build ./...
+        run: task build
 
       - name: Vet
-        run: go vet ./...
+        run: task vet
 
       - name: Lint
         run: |
           go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
-          golangci-lint run
+          task lint
 
       - name: Test
-        run: go test ./...
+        run: task test
 
   migrate:
     name: Migrate
@@ -43,8 +45,10 @@ jobs:
         with:
           go-version-file: go.mod
 
+      - uses: arduino/setup-task@v2
+
       - name: Apply migrations
-        run: go run ./cmd/migrate
+        run: task migrate
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
@@ -75,4 +79,3 @@ jobs:
         env:
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
-
