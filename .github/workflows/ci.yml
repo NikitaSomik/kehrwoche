@@ -18,6 +18,8 @@ jobs:
           go-version-file: go.mod
 
       - uses: arduino/setup-task@v3
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build
         run: task build
@@ -46,6 +48,8 @@ jobs:
           go-version-file: go.mod
 
       - uses: arduino/setup-task@v3
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Apply migrations
         run: task migrate
