@@ -124,6 +124,6 @@ func plan(dutyType schedule.DutyType) cmdHandler {
 			}
 			lines[i] = fmt.Sprintf("%s: %s", dutyType.Window(e.Date), room)
 		}
-		return fmt.Sprintf("📅 *%s — nächste %d Wochen:*\n\n%s", dutyType.Label(), schedule.PlanWeeks, strings.Join(lines, "\n")), nil
+		return fmt.Sprintf("🗓️ *%s — nächste %d Wochen:*\n\n%s", dutyType.Label(), schedule.PlanWeeks, strings.Join(lines, "\n")), nil
 	}
 }
