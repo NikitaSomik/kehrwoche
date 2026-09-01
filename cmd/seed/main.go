@@ -7,6 +7,7 @@
 //	task seed -- -start 2026-07-14                     # seed/continue all four
 //	task seed -- -vacant 1,6 -regen -start 2026-08-28  # regenerate after a move-out
 //	task seed -- -vacant 1,6 -regen -start 2026-08-28 -dry
+//	task seed -- -duty laundry -weeks 12 -regen -start 2026-09-04  # one duty, shorter horizon
 package main
 
 import (
@@ -57,22 +58,28 @@ func parseStart(s string) (time.Time, error) {
 	return t, nil
 }
 
+// periods is how many rows to generate for one duty: `weeks` of calendar time
+// times how many times a week that duty runs (laundry twice, the rest once).
+func periods(weeks int, d schedule.DutyType) int {
+	return weeks * len(d.EventWeekdays())
+}
+
 func main() {
 	dutyStr := flag.String("duty", "", "comma-separated duties to target: toilet1,toilet2,floor,laundry (default: all four)")
-	nPeriods := flag.Int("n", 26, "number of periods to generate per duty")
+	weeks := flag.Int("weeks", 26, "weeks of schedule to generate per duty (laundry runs twice a week, so it gets twice the rows)")
 	startStr := flag.String("start", "", "start date YYYY-MM-DD (required for a duty with no rows yet, or with -regen)")
 	vacantStr := flag.String("vacant", "", "comma-separated vacant room numbers (omit to be prompted)")
 	regen := flag.Bool("regen", false, "delete existing rows from -start forward, then regenerate (use after a move-out)")
 	dry := flag.Bool("dry", false, "print planned rows without writing")
 	flag.Parse()
 
-	if err := run(context.Background(), *dutyStr, *nPeriods, *startStr, *vacantStr, *regen, *dry); err != nil {
+	if err := run(context.Background(), *dutyStr, *weeks, *startStr, *vacantStr, *regen, *dry); err != nil {
 		fmt.Fprintln(os.Stderr, "seed:", err)
 		os.Exit(1)
 	}
 }
 
-func run(ctx context.Context, dutyStr string, nPeriods int, startStr, vacantStr string, regen, dry bool) error {
+func run(ctx context.Context, dutyStr string, weeks int, startStr, vacantStr string, regen, dry bool) error {
 	if regen && startStr == "" {
 		return fmt.Errorf("-regen requires -start")
 	}
@@ -105,7 +112,7 @@ func run(ctx context.Context, dutyStr string, nPeriods int, startStr, vacantStr 
 			fmt.Printf("%s: no occupied rooms, skipped\n", duty.Label())
 			continue
 		}
-		rows, err := planDuty(ctx, tx, duty, rotations[duty], active, nPeriods, startStr, regen)
+		rows, err := planDuty(ctx, tx, duty, rotations[duty], active, periods(weeks, duty), startStr, regen)
 		if err != nil {
 			return err
 		}

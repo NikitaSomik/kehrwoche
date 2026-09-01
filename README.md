@@ -57,3 +57,17 @@ can answer questions about it:
 | `upcoming` | the next assignments for one duty |
 
 It's registered in `.mcp.json` and reads `DATABASE_URL` from `.env` (via `task mcp`).
+
+## Regenerating the schedule
+
+`cmd/seed` fills the `schedules` table. `-weeks` is the horizon per duty
+(laundry runs twice a week, so it gets twice the rows). Always dry-run first.
+
+```bash
+task seed -- -dry                                            # continue every duty, 26 weeks
+task seed -- -vacant 1,6 -regen -start 2026-08-28 -dry       # rewrite the future after a move-out
+task seed -- -duty laundry -weeks 12 -regen -start 2026-09-04 -dry
+```
+
+`-regen` deletes rows from `-start` forward and rewrites them, continuing the
+rotation from the last surviving row. Without `-regen` it only appends.
