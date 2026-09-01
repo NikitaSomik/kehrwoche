@@ -20,6 +20,14 @@ const (
 // PlanWeeks is the look-ahead horizon `/*_plan` commands show, in weeks.
 const PlanWeeks = 4
 
+// AllDutyTypes lists every duty in a stable order, for callers that need to
+// enumerate them (status reports, seeding).
+func AllDutyTypes() []DutyType {
+	return []DutyType{
+		DutyTypeToilet1, DutyTypeToilet2, DutyTypeHall, DutyTypeFloor, DutyTypeLaundry,
+	}
+}
+
 func RoomNo(n int) string {
 	return fmt.Sprintf("Zimmer %d", n)
 }
@@ -114,6 +122,12 @@ func (d DutyType) EventWeekdays() []time.Weekday {
 // Fri–Sun, but only Friday is an event day.
 func (d DutyType) IsEventDay(w time.Weekday) bool {
 	return hasWeekday(configs[d].days, w)
+}
+
+// WindowDays is how many days a single assignment stays current, counting
+// from its event day (3 for weekly Fri–Sun duties, 1 for Waschküche).
+func (d DutyType) WindowDays() int {
+	return configs[d].window
 }
 
 func (d DutyType) Window(t time.Time) string {

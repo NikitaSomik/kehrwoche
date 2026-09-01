@@ -28,6 +28,25 @@ func (r fakeRow) Scan(dest ...any) error {
 	return nil
 }
 
+// fakeMaxRow implements pgx.Row for LastGenerated, which scans max(duty_date)
+// into a *time.Time (nil for an empty schedule).
+type fakeMaxRow struct {
+	date *time.Time
+	err  error
+}
+
+func (r fakeMaxRow) Scan(dest ...any) error {
+	if r.err != nil {
+		return r.err
+	}
+	p, ok := dest[0].(**time.Time)
+	if !ok {
+		return errors.New("fakeMaxRow: unsupported dest type")
+	}
+	*p = r.date
+	return nil
+}
+
 // fakeRowData is one row returned by fakeRows.
 type fakeRowData struct {
 	weekStart time.Time
@@ -73,7 +92,7 @@ func (r *fakeRows) Scan(dest ...any) error {
 
 // fakeQuerier implements Querier for repo tests, without a live Postgres connection.
 type fakeQuerier struct {
-	row      fakeRow
+	row      pgx.Row
 	rows     *fakeRows
 	queryErr error
 }
@@ -118,6 +137,40 @@ func TestGetOnDuty(t *testing.T) {
 		wantErr := errors.New("connection reset")
 		q := fakeQuerier{row: fakeRow{err: wantErr}}
 		_, err := GetOnDuty(context.Background(), q, DutyTypeToilet1, now)
+		if !errors.Is(err, wantErr) {
+			t.Errorf("got err %v, want %v", err, wantErr)
+		}
+	})
+}
+
+func TestLastGenerated(t *testing.T) {
+	t.Run("returns the stored max date", func(t *testing.T) {
+		want := mustDate("2026-08-31")
+		q := fakeQuerier{row: fakeMaxRow{date: &want}}
+		got, ok, err := LastGenerated(context.Background(), q, DutyTypeFloor)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !ok || !got.Equal(want) {
+			t.Errorf("got %v, %v, want %v, true", got, ok, want)
+		}
+	})
+
+	t.Run("empty schedule", func(t *testing.T) {
+		q := fakeQuerier{row: fakeMaxRow{date: nil}}
+		_, ok, err := LastGenerated(context.Background(), q, DutyTypeFloor)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if ok {
+			t.Error("got ok=true, want false for an empty schedule")
+		}
+	})
+
+	t.Run("query error", func(t *testing.T) {
+		wantErr := errors.New("connection reset")
+		q := fakeQuerier{row: fakeMaxRow{err: wantErr}}
+		_, _, err := LastGenerated(context.Background(), q, DutyTypeFloor)
 		if !errors.Is(err, wantErr) {
 			t.Errorf("got err %v, want %v", err, wantErr)
 		}
