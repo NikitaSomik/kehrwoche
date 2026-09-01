@@ -40,5 +40,20 @@ task lint     # golangci-lint
 task fmt      # gofmt
 task tidy     # tidy dependencies
 task migrate  # apply database migrations
-task seed     # seed the database
+task seed -- -dry   # seed / regenerate the schedule (flags after --)
+task mcp      # run the MCP server (started by an MCP client, not by hand)
 ```
+
+## MCP server
+
+`cmd/mcp` is a local [MCP](https://modelcontextprotocol.io) server (stdio) that
+exposes the schedule read-only, so an MCP client (Claude Code, Claude Desktop)
+can answer questions about it:
+
+| Tool | Purpose |
+|---|---|
+| `list_duties` | every duty: label, event weekdays, window, last date generated |
+| `on_duty` | who is on duty on a date (all duties, or one) |
+| `upcoming` | the next assignments for one duty |
+
+It's registered in `.mcp.json` and reads `DATABASE_URL` from `.env` (via `task mcp`).

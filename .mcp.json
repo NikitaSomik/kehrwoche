@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "kehrwoche": {
+      "command": "task",
+      "args": ["mcp"],
+      "description": "Read-only access to the cleaning schedule (list_duties, on_duty, upcoming). Runs ./cmd/mcp over stdio; reads DATABASE_URL from .env via Taskfile."
+    }
+  }
+}

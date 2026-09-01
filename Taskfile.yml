@@ -28,6 +28,12 @@ tasks:
     cmds:
       - golangci-lint run ./...
 
+  mcp:
+    desc: Run the MCP server (started by an MCP client over stdio, not by hand)
+    silent: true
+    cmds:
+      - go run ./cmd/mcp
+
   tidy:
     desc: Tidy go.mod/go.sum
     sources:
@@ -46,6 +52,6 @@ tasks:
       - go run ./cmd/migrate
 
   seed:
-    desc: Seed the database
+    desc: 'Seed / regenerate the schedule — pass flags after `--`, e.g. task seed -- -dry'
     cmds:
-      - go run ./cmd/seed
+      - go run ./cmd/seed {{.CLI_ARGS}}

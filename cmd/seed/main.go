@@ -2,8 +2,11 @@
 // toilet2, Etage, Waschküche) and writes them to DATABASE_URL. Treppenhaus is
 // left manual. It's a local dev tool, not a Vercel function.
 //
-//	go run ./cmd/seed -start 2026-07-14      # seed/continue all four
-//	go run ./cmd/seed -vacant 5 -regen -start 2026-09-01
+// Run it through Task so it picks up DATABASE_URL from .env; flags go after --:
+//
+//	task seed -- -start 2026-07-14                     # seed/continue all four
+//	task seed -- -vacant 1,6 -regen -start 2026-08-28  # regenerate after a move-out
+//	task seed -- -vacant 1,6 -regen -start 2026-08-28 -dry
 package main
 
 import (
@@ -42,6 +45,16 @@ var rotations = map[schedule.DutyType][]int{
 var dutyOrder = []schedule.DutyType{
 	schedule.DutyTypeToilet1, schedule.DutyTypeToilet2,
 	schedule.DutyTypeFloor, schedule.DutyTypeLaundry,
+}
+
+const dateLayout = "2006-01-02"
+
+func parseStart(s string) (time.Time, error) {
+	t, err := time.Parse(dateLayout, s)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("invalid -start: %w", err)
+	}
+	return t, nil
 }
 
 func main() {
@@ -92,13 +105,13 @@ func run(ctx context.Context, dutyStr string, nPeriods int, startStr, vacantStr 
 			fmt.Printf("%s: no occupied rooms, skipped\n", duty.Label())
 			continue
 		}
-		rows, err := planDuty(ctx, tx, duty, active, nPeriods, startStr, regen)
+		rows, err := planDuty(ctx, tx, duty, rotations[duty], active, nPeriods, startStr, regen)
 		if err != nil {
 			return err
 		}
 		for _, r := range rows {
 			room := schedule.RoomNo(r.room)
-			fmt.Printf("%-12s %s  %s\n", duty, r.date.Format("2006-01-02"), room)
+			fmt.Printf("%-12s %s  %s\n", duty, r.date.Format(dateLayout), room)
 			if dry {
 				continue
 			}
@@ -106,7 +119,7 @@ func run(ctx context.Context, dutyStr string, nPeriods int, startStr, vacantStr 
 				`INSERT INTO schedules (duty_type, duty_date, room) VALUES ($1, $2, $3)`,
 				duty, r.date, room,
 			); err != nil {
-				return fmt.Errorf("insert %s %s: %w", duty, r.date.Format("2006-01-02"), err)
+				return fmt.Errorf("insert %s %s: %w", duty, r.date.Format(dateLayout), err)
 			}
 		}
 	}
@@ -127,35 +140,53 @@ type plannedRow struct {
 	room int
 }
 
-func planDuty(ctx context.Context, tx txQuerier, duty schedule.DutyType, active []int, n int, startStr string, regen bool) ([]plannedRow, error) {
-	last, hasLast, err := lastRow(ctx, tx, duty)
-	if err != nil {
-		return nil, err
-	}
-
+func planDuty(ctx context.Context, tx txQuerier, duty schedule.DutyType, rotation, active []int, n int, startStr string, regen bool) ([]plannedRow, error) {
 	var date time.Time
 	var idx int
+
 	switch {
-	case hasLast && !regen:
-		date = duty.NextEventDate(last.date)
-		idx = indexAfter(active, last.room)
-	default:
-		if startStr == "" {
-			return nil, fmt.Errorf("%s: no existing rows, -start required", duty)
-		}
-		parsed, err := time.Parse("2006-01-02", startStr)
+	case regen:
+		// startStr is guaranteed non-empty here (run rejects -regen without -start).
+		parsed, err := parseStart(startStr)
 		if err != nil {
-			return nil, fmt.Errorf("invalid -start: %w", err)
+			return nil, err
 		}
 		date = duty.EventDate(parsed)
-		idx = 0
-		if regen {
-			if _, err := tx.Exec(ctx,
-				`DELETE FROM schedules WHERE duty_type = $1 AND duty_date >= $2`,
-				duty, date,
-			); err != nil {
-				return nil, fmt.Errorf("regen delete %s: %w", duty, err)
+
+		// Continue the rotation from the last assignment that survives the
+		// delete, so dropping a room closes the cycle up instead of restarting
+		// it at the first room.
+		prev, hasPrev, err := lastRow(ctx, tx, duty, date)
+		if err != nil {
+			return nil, err
+		}
+		if _, err := tx.Exec(ctx,
+			`DELETE FROM schedules WHERE duty_type = $1 AND duty_date >= $2`,
+			duty, date,
+		); err != nil {
+			return nil, fmt.Errorf("regen delete %s: %w", duty, err)
+		}
+		if hasPrev {
+			idx = nextActiveIndex(rotation, active, prev.room)
+		}
+
+	default:
+		last, hasLast, err := lastRow(ctx, tx, duty, time.Time{})
+		if err != nil {
+			return nil, err
+		}
+		switch {
+		case hasLast:
+			date = duty.NextEventDate(last.date)
+			idx = nextActiveIndex(rotation, active, last.room)
+		case startStr == "":
+			return nil, fmt.Errorf("%s: no existing rows, -start required", duty)
+		default:
+			parsed, err := parseStart(startStr)
+			if err != nil {
+				return nil, err
 			}
+			date = duty.EventDate(parsed)
 		}
 	}
 
@@ -172,14 +203,25 @@ type dbRow struct {
 	room int
 }
 
-func lastRow(ctx context.Context, tx txQuerier, duty schedule.DutyType) (dbRow, bool, error) {
+const (
+	lastRowSQL       = `SELECT duty_date, room FROM schedules WHERE duty_type = $1 ORDER BY duty_date DESC LIMIT 1`
+	lastRowBeforeSQL = `SELECT duty_date, room FROM schedules WHERE duty_type = $1 AND duty_date < $2 ORDER BY duty_date DESC LIMIT 1`
+)
+
+// lastRow returns the latest stored assignment for duty. When before is
+// non-zero only rows earlier than it count, which lets -regen read the row
+// that survives its delete and continue the rotation from there.
+func lastRow(ctx context.Context, tx txQuerier, duty schedule.DutyType, before time.Time) (dbRow, bool, error) {
+	var row pgx.Row
+	if before.IsZero() {
+		row = tx.QueryRow(ctx, lastRowSQL, duty)
+	} else {
+		row = tx.QueryRow(ctx, lastRowBeforeSQL, duty, before)
+	}
+
 	var date time.Time
 	var name string
-	err := tx.QueryRow(ctx,
-		`SELECT duty_date, room FROM schedules
-		 WHERE duty_type = $1 ORDER BY duty_date DESC LIMIT 1`,
-		duty,
-	).Scan(&date, &name)
+	err := row.Scan(&date, &name)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return dbRow{}, false, nil
 	}
@@ -224,10 +266,29 @@ func activeRooms(rotation []int, vacant map[int]bool) []int {
 	return active
 }
 
-func indexAfter(active []int, room int) int {
+// nextActiveIndex returns the index within active of the first non-vacant room
+// that follows lastRoom in the full rotation order — so removing a room closes
+// the cycle up rather than restarting it. Falls back to 0 when lastRoom isn't
+// in the rotation (or nothing is active).
+func nextActiveIndex(rotation, active []int, lastRoom int) int {
+	start := -1
+	for i, r := range rotation {
+		if r == lastRoom {
+			start = i
+			break
+		}
+	}
+	if start < 0 || len(active) == 0 {
+		return 0
+	}
+
+	pos := make(map[int]int, len(active))
 	for i, r := range active {
-		if r == room {
-			return (i + 1) % len(active)
+		pos[r] = i
+	}
+	for step := 1; step <= len(rotation); step++ {
+		if i, ok := pos[rotation[(start+step)%len(rotation)]]; ok {
+			return i
 		}
 	}
 	return 0
