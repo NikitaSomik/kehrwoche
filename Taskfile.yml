@@ -46,6 +46,6 @@ tasks:
       - go run ./cmd/migrate
 
   seed:
-    desc: Seed the database
+    desc: 'Seed / regenerate the schedule — pass flags after `--`, e.g. task seed -- -dry'
     cmds:
-      - go run ./cmd/seed
+      - go run ./cmd/seed {{.CLI_ARGS}}
