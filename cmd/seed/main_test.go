@@ -135,6 +135,15 @@ func TestNextActiveIndex(t *testing.T) {
 	})
 }
 
+func TestPeriods(t *testing.T) {
+	if got := periods(26, schedule.DutyTypeFloor); got != 26 {
+		t.Errorf("weekly duty: got %d, want 26", got)
+	}
+	if got := periods(26, schedule.DutyTypeLaundry); got != 52 {
+		t.Errorf("laundry (Tue+Fri): got %d, want 52", got)
+	}
+}
+
 func TestPlanDutyRegenContinuity(t *testing.T) {
 	// floor rotation is 1..8; rooms 1 and 6 have moved out.
 	rotation := rotations[schedule.DutyTypeFloor]
