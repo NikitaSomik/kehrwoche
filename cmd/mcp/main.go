@@ -69,7 +69,7 @@ func run(ctx context.Context) error {
 
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "upcoming",
-		Description: "The next assignments for one duty, one row per event day, gaps shown as an empty room.",
+		Description: "The next assignments per duty, one row per event day, gaps shown as an empty room. Omit `duty` for every duty.",
 	}, upcomingHandler(loc))
 
 	return s.Run(ctx, &mcp.StdioTransport{})
@@ -93,6 +93,19 @@ func parseDuty(s string) (schedule.DutyType, error) {
 		}
 	}
 	return "", fmt.Errorf("unknown duty %q (valid: toilet1, toilet2, hall, floor, laundry)", s)
+}
+
+// selectDuties resolves the optional `duty` argument shared by on_duty and
+// upcoming: a specific duty, or every duty when the argument is empty.
+func selectDuties(dutyArg string) ([]schedule.DutyType, error) {
+	if dutyArg == "" {
+		return schedule.AllDutyTypes(), nil
+	}
+	d, err := parseDuty(dutyArg)
+	if err != nil {
+		return nil, err
+	}
+	return []schedule.DutyType{d}, nil
 }
 
 func resolveDate(s string, loc *time.Location) (time.Time, error) {
@@ -180,14 +193,9 @@ func onDutyHandler(loc *time.Location) mcp.ToolHandlerFor[onDutyIn, onDutyOut] {
 		if err != nil {
 			return nil, onDutyOut{}, err
 		}
-
-		duties := schedule.AllDutyTypes()
-		if in.Duty != "" {
-			d, err := parseDuty(in.Duty)
-			if err != nil {
-				return nil, onDutyOut{}, err
-			}
-			duties = []schedule.DutyType{d}
+		duties, err := selectDuties(in.Duty)
+		if err != nil {
+			return nil, onDutyOut{}, err
 		}
 
 		out := onDutyOut{Date: date.Format(dateLayout)}
@@ -217,7 +225,7 @@ func onDutyHandler(loc *time.Location) mcp.ToolHandlerFor[onDutyIn, onDutyOut] {
 // --- upcoming ---
 
 type upcomingIn struct {
-	Duty  string `json:"duty" jsonschema:"duty key (toilet1, toilet2, hall, floor, laundry)"`
+	Duty  string `json:"duty,omitempty" jsonschema:"duty key (toilet1, toilet2, hall, floor, laundry); omit for every duty"`
 	Weeks int    `json:"weeks,omitempty" jsonschema:"weeks to look ahead (default 4)"`
 }
 
@@ -227,18 +235,19 @@ type upcomingSlot struct {
 	Room    string `json:"room,omitempty"`
 }
 
-type upcomingOut struct {
+type dutyPlan struct {
 	Duty  string         `json:"duty"`
-	Weeks int            `json:"weeks"`
+	Label string         `json:"label"`
 	Slots []upcomingSlot `json:"slots"`
+}
+
+type upcomingOut struct {
+	Weeks int        `json:"weeks"`
+	Plans []dutyPlan `json:"plans"`
 }
 
 func upcomingHandler(loc *time.Location) mcp.ToolHandlerFor[upcomingIn, upcomingOut] {
 	return func(ctx context.Context, _ *mcp.CallToolRequest, in upcomingIn) (*mcp.CallToolResult, upcomingOut, error) {
-		d, err := parseDuty(in.Duty)
-		if err != nil {
-			return nil, upcomingOut{}, err
-		}
 		weeks := in.Weeks
 		switch {
 		case weeks <= 0:
@@ -246,20 +255,29 @@ func upcomingHandler(loc *time.Location) mcp.ToolHandlerFor[upcomingIn, upcoming
 		case weeks > maxUpcomingWeeks:
 			weeks = maxUpcomingWeeks
 		}
-		n := weeks * len(d.EventWeekdays())
+		duties, err := selectDuties(in.Duty)
+		if err != nil {
+			return nil, upcomingOut{}, err
+		}
+		now := time.Now().In(loc)
 
-		out := upcomingOut{Duty: string(d), Weeks: weeks}
+		out := upcomingOut{Weeks: weeks}
 		err = withConn(ctx, func(ctx context.Context, conn *pgx.Conn) error {
-			entries, err := schedule.GetUpcoming(ctx, conn, d, time.Now().In(loc), n)
-			if err != nil {
-				return err
-			}
-			for _, e := range entries {
-				out.Slots = append(out.Slots, upcomingSlot{
-					Date:    e.Date.Format(dateLayout),
-					Weekday: e.Date.Weekday().String(),
-					Room:    e.Room,
-				})
+			for _, d := range duties {
+				n := weeks * len(d.EventWeekdays())
+				entries, err := schedule.GetUpcoming(ctx, conn, d, now, n)
+				if err != nil {
+					return fmt.Errorf("upcoming for %s: %w", d, err)
+				}
+				plan := dutyPlan{Duty: string(d), Label: d.Label()}
+				for _, e := range entries {
+					plan.Slots = append(plan.Slots, upcomingSlot{
+						Date:    e.Date.Format(dateLayout),
+						Weekday: e.Date.Weekday().String(),
+						Room:    e.Room,
+					})
+				}
+				out.Plans = append(out.Plans, plan)
 			}
 			return nil
 		})

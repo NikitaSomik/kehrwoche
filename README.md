@@ -54,7 +54,7 @@ can answer questions about it:
 |---|---|
 | `list_duties` | every duty: label, event weekdays, window, last date generated |
 | `on_duty` | who is on duty on a date (all duties, or one) |
-| `upcoming` | the next assignments for one duty |
+| `upcoming` | the next assignments for one duty, or every duty |
 
 It's registered in `.mcp.json` and reads `DATABASE_URL` from `.env` (via `task mcp`).
 

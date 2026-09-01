@@ -22,6 +22,34 @@ func TestParseDuty(t *testing.T) {
 	})
 }
 
+func TestSelectDuties(t *testing.T) {
+	t.Run("empty arg means every duty", func(t *testing.T) {
+		got, err := selectDuties("")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(got) != len(schedule.AllDutyTypes()) {
+			t.Errorf("got %d duties, want %d", len(got), len(schedule.AllDutyTypes()))
+		}
+	})
+
+	t.Run("a key narrows to one", func(t *testing.T) {
+		got, err := selectDuties("floor")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(got) != 1 || got[0] != schedule.DutyTypeFloor {
+			t.Errorf("got %v, want [floor]", got)
+		}
+	})
+
+	t.Run("an unknown key is an error", func(t *testing.T) {
+		if _, err := selectDuties("kitchen"); err == nil {
+			t.Error("expected an error")
+		}
+	})
+}
+
 func TestResolveDate(t *testing.T) {
 	loc := time.UTC
 
