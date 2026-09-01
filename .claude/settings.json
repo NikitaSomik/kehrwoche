@@ -1,0 +1,45 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(task test)",
+      "Bash(task vet)",
+      "Bash(task lint)",
+      "Bash(task fmt)",
+      "Bash(task build)",
+      "Bash(task tidy)",
+      "Bash(task --list)",
+      "Bash(go build:*)",
+      "Bash(go test:*)",
+      "Bash(go vet:*)",
+      "Bash(go doc:*)",
+      "Bash(gofmt:*)",
+      "Bash(golangci-lint run:*)"
+    ],
+    "ask": [
+      "Bash(git commit:*)"
+    ],
+    "deny": [
+      "Read(./.env)",
+      "Bash(task migrate:*)",
+      "Bash(task seed:*)",
+      "Bash(go run ./cmd/migrate:*)",
+      "Bash(go run ./cmd/seed:*)",
+      "Bash(vercel:*)",
+      "Bash(npx vercel:*)",
+      "Bash(git push:*)"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -r '.tool_input.file_path // empty' | { read -r f; [ -n \"$f\" ] && case \"$f\" in *.go) gofmt -w \"$f\" ;; esac; }"
+          }
+        ]
+      }
+    ]
+  }
+}
