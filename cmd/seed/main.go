@@ -79,6 +79,8 @@ func main() {
 	}
 }
 
+// run wires the CLI flags to seed: it resolves the duty list, prompts for
+// vacant rooms if needed, and opens the connection from DATABASE_URL.
 func run(ctx context.Context, dutyStr string, weeks int, startStr, vacantStr string, regen, dry bool) error {
 	if regen && startStr == "" {
 		return fmt.Errorf("-regen requires -start")
@@ -100,26 +102,58 @@ func run(ctx context.Context, dutyStr string, weeks int, startStr, vacantStr str
 	}
 	defer func() { _ = conn.Close(ctx) }()
 
+	return seed(ctx, conn, seedParams{
+		duties: duties,
+		weeks:  weeks,
+		start:  startStr,
+		vacant: vacant,
+		regen:  regen,
+		dry:    dry,
+	})
+}
+
+// seedConn is the slice of *pgx.Conn seed needs — one transaction. It lets
+// integration tests pass a real connection while keeping the signature small.
+type seedConn interface {
+	Begin(ctx context.Context) (pgx.Tx, error)
+}
+
+type seedParams struct {
+	duties []schedule.DutyType
+	weeks  int
+	start  string // "" unless -start was given
+	vacant map[int]bool
+	regen  bool
+	dry    bool
+}
+
+// seed generates and writes rows for each duty in one transaction, rolling
+// back on any error (and on -dry).
+func seed(ctx context.Context, conn seedConn, p seedParams) error {
+	if p.regen && p.start == "" {
+		return fmt.Errorf("-regen requires -start")
+	}
+
 	tx, err := conn.Begin(ctx)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	for _, duty := range duties {
-		active := activeRooms(rotations[duty], vacant)
+	for _, duty := range p.duties {
+		active := activeRooms(rotations[duty], p.vacant)
 		if len(active) == 0 {
 			fmt.Printf("%s: no occupied rooms, skipped\n", duty.Label())
 			continue
 		}
-		rows, err := planDuty(ctx, tx, duty, rotations[duty], active, periods(weeks, duty), startStr, regen)
+		rows, err := planDuty(ctx, tx, duty, rotations[duty], active, periods(p.weeks, duty), p.start, p.regen)
 		if err != nil {
 			return err
 		}
 		for _, r := range rows {
 			room := schedule.RoomNo(r.room)
 			fmt.Printf("%-12s %s  %s\n", duty, r.date.Format(dateLayout), room)
-			if dry {
+			if p.dry {
 				continue
 			}
 			if _, err := tx.Exec(ctx,
@@ -131,7 +165,7 @@ func run(ctx context.Context, dutyStr string, weeks int, startStr, vacantStr str
 		}
 	}
 
-	if dry {
+	if p.dry {
 		fmt.Println("seed: dry run, nothing written")
 		return nil
 	}
