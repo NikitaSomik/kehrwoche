@@ -198,7 +198,7 @@ func planDuty(ctx context.Context, tx txQuerier, duty schedule.DutyType, rotatio
 	}
 
 	rows := make([]plannedRow, n)
-	for i := 0; i < n; i++ {
+	for i := range n {
 		rows[i] = plannedRow{date: date, room: active[(idx+i)%len(active)]}
 		date = duty.NextEventDate(date)
 	}

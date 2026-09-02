@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/nikitasomusev/kehrwoche/pkg/config"
@@ -45,7 +45,7 @@ func run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	sort.Strings(files)
+	slices.Sort(files)
 
 	pending := 0
 	for _, f := range files {
