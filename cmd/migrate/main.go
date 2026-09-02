@@ -1,6 +1,6 @@
 // Command migrate applies pending migrations/*.sql (in filename order) to the
 // database in DATABASE_URL, recording each in schema_migrations. Run from the
-// repo root with `make migrate`.
+// repo root with `task migrate`.
 package main
 
 import (

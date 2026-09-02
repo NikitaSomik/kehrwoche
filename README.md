@@ -1,7 +1,7 @@
 # Kehrwoche
 
 ![CI](https://github.com/NikitaSomik/kehrwoche/actions/workflows/ci.yml/badge.svg)
-![Go](https://img.shields.io/badge/Go-1.26-00ADD8?logo=go&logoColor=white)
+![Go](https://img.shields.io/badge/Go-1.27-00ADD8?logo=go&logoColor=white)
 ![Vercel](https://img.shields.io/badge/Vercel-serverless-000000?logo=vercel&logoColor=white)
 ![golangci-lint](https://img.shields.io/badge/golangci--lint-enabled-brightgreen)
 
@@ -35,6 +35,7 @@ brew install go-task/tap/go-task   # macOS
 
 ```bash
 task test     # run tests
+task build    # compile all packages
 task vet      # go vet
 task lint     # golangci-lint
 task fmt      # gofmt
