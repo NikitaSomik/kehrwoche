@@ -56,6 +56,6 @@ Bot commands: `/toilette1`, `/toilette2`, `/treppenhaus` (hall), `/etage` (floor
 
 ## Conventions
 
-- Go 1.26, `golangci-lint` v2 (`errcheck`, `govet`, `ineffassign`, `staticcheck`, `unused`, `gosec`).
+- Go 1.27, `golangci-lint` v2 (`errcheck`, `govet`, `ineffassign`, `staticcheck`, `unused`, `gosec`).
 - Keep new date/cadence logic derived from `configs` — don't duplicate weekday literals (see the `EventWeekdays` comment).
 - Commit messages: no `Co-Authored-By` trailers.
