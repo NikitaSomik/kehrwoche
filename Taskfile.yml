@@ -13,6 +13,16 @@ tasks:
     cmds:
       - go test ./...
 
+  test:integration:
+    desc: Integration tests against a throwaway Postgres (needs Docker)
+    vars:
+      PG_URL: postgres://postgres:test@127.0.0.1:55432/kehrwoche?sslmode=disable
+    cmds:
+      - docker run -d --rm --name kw-pgtest -e POSTGRES_PASSWORD=test -e POSTGRES_DB=kehrwoche -p 55432:5432 postgres:17-alpine
+      - defer: docker stop kw-pgtest
+      - for i in $(seq 1 30); do docker exec kw-pgtest pg_isready -U postgres -d kehrwoche -q && break || sleep 0.5; done
+      - TEST_DATABASE_URL='{{.PG_URL}}' go test -tags=integration -p 1 -count=1 ./...
+
   fmt:
     desc: Format Go source files
     cmds:
