@@ -2,6 +2,7 @@ package schedule
 
 import (
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -121,7 +122,7 @@ func (d DutyType) EventWeekdays() []time.Weekday {
 // narrower than "duty is in effect on w": a weekly duty's window runs
 // Fri–Sun, but only Friday is an event day.
 func (d DutyType) IsEventDay(w time.Weekday) bool {
-	return hasWeekday(configs[d].days, w)
+	return slices.Contains(configs[d].days, w)
 }
 
 // WindowDays is how many days a single assignment stays current, counting
@@ -152,9 +153,9 @@ func (r OnDutyResult) Format(label, window string) string {
 
 func eventDate(t time.Time, days []time.Weekday, window int) time.Time {
 	t = dateOnly(t)
-	for i := 0; i < window; i++ {
+	for i := range window {
 		candidate := t.AddDate(0, 0, -i)
-		if hasWeekday(days, candidate.Weekday()) {
+		if slices.Contains(days, candidate.Weekday()) {
 			return candidate
 		}
 	}
@@ -164,22 +165,13 @@ func eventDate(t time.Time, days []time.Weekday, window int) time.Time {
 // nextWeekdayOnOrAfter returns the earliest date >= t whose weekday is in days.
 func nextWeekdayOnOrAfter(t time.Time, days ...time.Weekday) time.Time {
 	t = dateOnly(t)
-	for i := 0; i < 7; i++ {
+	for i := range 7 {
 		candidate := t.AddDate(0, 0, i)
-		if hasWeekday(days, candidate.Weekday()) {
+		if slices.Contains(days, candidate.Weekday()) {
 			return candidate
 		}
 	}
 	panic("nextWeekdayOnOrAfter: no match within a 7-day window")
-}
-
-func hasWeekday(days []time.Weekday, w time.Weekday) bool {
-	for _, d := range days {
-		if d == w {
-			return true
-		}
-	}
-	return false
 }
 
 func dateOnly(t time.Time) time.Time {
