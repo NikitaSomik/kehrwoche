@@ -96,11 +96,11 @@ func TestSendPlainOmitsParseMode(t *testing.T) {
 	}
 }
 
-func TestSetCommandsPayload(t *testing.T) {
+func TestSetCommandsDefaultScope(t *testing.T) {
 	client, body, path := capturingClient(http.StatusOK, `{"ok":true,"result":true}`)
 	err := SetCommands(context.Background(), client, "T", []Command{
 		{Command: "help", Description: "Alle Befehle"},
-	})
+	}, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -110,16 +110,33 @@ func TestSetCommandsPayload(t *testing.T) {
 	if !strings.Contains(*body, `"command":"help"`) || !strings.Contains(*body, `"description":"Alle Befehle"`) {
 		t.Errorf("unexpected setMyCommands payload: %s", *body)
 	}
+	if strings.Contains(*body, "scope") {
+		t.Errorf("default scope must not send a scope field: %s", *body)
+	}
+}
+
+func TestSetCommandsWithScope(t *testing.T) {
+	client, body, _ := capturingClient(http.StatusOK, `{"ok":true,"result":true}`)
+	err := SetCommands(context.Background(), client, "T", nil, "all_group_chats")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(*body, `"scope":{"type":"all_group_chats"}`) {
+		t.Errorf("scope not in payload: %s", *body)
+	}
 }
 
 func TestGetCommandsParsesResult(t *testing.T) {
 	resp := `{"ok":true,"result":[{"command":"help","description":"Alle Befehle"},{"command":"etage","description":"Etage"}]}`
-	client, _, _ := capturingClient(http.StatusOK, resp)
-	cmds, err := GetCommands(context.Background(), client, "T")
+	client, body, _ := capturingClient(http.StatusOK, resp)
+	cmds, err := GetCommands(context.Background(), client, "T", "all_private_chats")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(cmds) != 2 || cmds[0].Command != "help" || cmds[1].Description != "Etage" {
 		t.Errorf("got %+v", cmds)
+	}
+	if !strings.Contains(*body, `"scope":{"type":"all_private_chats"}`) {
+		t.Errorf("scope not in getMyCommands payload: %s", *body)
 	}
 }

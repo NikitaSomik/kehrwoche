@@ -33,7 +33,7 @@ Before committing: `task fmt && task vet && task lint && task test`.
 - `pkg/db` — `db.Connect`.
 - `pkg/config` — `config.Load()` reads every env var once into `Config`. Add new env vars here, not scattered `os.Getenv`.
 - `cmd/migrate`, `cmd/seed` — one-shot CLIs. `cmd/seed` also regenerates the rotation after a move-out (`-vacant`, `-regen -start`). `cmd/migrate` is a thin wrapper over `internal/migrate.Apply`.
-- `cmd/setcommands` — one-shot CLI, pushes the Telegram command menu (`setMyCommands`) from `botcmd.Menu()`; `-show` prints Telegram's current menu.
+- `cmd/setcommands` — one-shot CLI, pushes the Telegram command menu (`setMyCommands`) from `botcmd.Menu()` to every scope (default + `all_private_chats` + `all_group_chats` + `all_chat_administrators`), so an old scope-specific list can't shadow it; `-show` prints each scope's current menu.
 - `pkg/botcmd` — the bot's slash commands: `duties` (name + German description + handler) is the single source of truth; `Lookup` (webhook dispatch), `Menu` (setMyCommands), `StaticReply` (`/help` any chat, `/start` private only). `wer`/`plan` handlers live here. Kept out of `api/` because Vercel builds every `api/*.go` as its own function.
 - `cmd/mcp` — local MCP server (stdio) exposing the schedule read-only: `list_duties`, `on_duty`, `upcoming`. Thin adapter over `pkg/schedule`; opens a DB connection per call. Wired up in `.mcp.json` via `task mcp` (so it inherits `DATABASE_URL` from `.env`). Smoke-test with `scripts/mcp-smoke.sh`.
 - `migrations/*.sql` — plain SQL, applied in order by `cmd/migrate`.
