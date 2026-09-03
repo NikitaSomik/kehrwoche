@@ -39,15 +39,26 @@ func sendMessage(ctx context.Context, client *http.Client, token string, chatID 
 	return err
 }
 
-// SetCommands replaces the bot's command menu (setMyCommands, default scope).
-func SetCommands(ctx context.Context, client *http.Client, token string, cmds []Command) error {
-	_, err := call(ctx, client, token, "setMyCommands", map[string]any{"commands": cmds})
+// SetCommands replaces the bot's command menu (setMyCommands) for the given
+// scope; an empty scope means the default scope. Scope is a BotCommandScope
+// type string, e.g. "all_private_chats", "all_group_chats".
+func SetCommands(ctx context.Context, client *http.Client, token string, cmds []Command, scope string) error {
+	payload := map[string]any{"commands": cmds}
+	if scope != "" {
+		payload["scope"] = map[string]string{"type": scope}
+	}
+	_, err := call(ctx, client, token, "setMyCommands", payload)
 	return err
 }
 
-// GetCommands returns the bot's current command menu (getMyCommands, default scope).
-func GetCommands(ctx context.Context, client *http.Client, token string) ([]Command, error) {
-	raw, err := call(ctx, client, token, "getMyCommands", map[string]any{})
+// GetCommands returns the bot's command menu (getMyCommands) for the given
+// scope; an empty scope means the default scope.
+func GetCommands(ctx context.Context, client *http.Client, token, scope string) ([]Command, error) {
+	payload := map[string]any{}
+	if scope != "" {
+		payload["scope"] = map[string]string{"type": scope}
+	}
+	raw, err := call(ctx, client, token, "getMyCommands", payload)
 	if err != nil {
 		return nil, err
 	}
