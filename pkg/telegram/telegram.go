@@ -11,22 +11,67 @@ import (
 	"net/url"
 )
 
-// Send posts a Markdown message to the given Telegram chat using client.
-// The bot token is never logged — errors describe the failure without including the URL.
+// Command is one entry in the bot's command menu (Telegram's setMyCommands).
+type Command struct {
+	Command     string `json:"command"`
+	Description string `json:"description"`
+}
+
+// Send posts a Markdown-formatted message to the given Telegram chat using
+// client. The bot token is never logged — errors describe the failure without
+// including the URL.
 func Send(ctx context.Context, client *http.Client, token string, chatID int64, text string) error {
-	body, err := json.Marshal(map[string]any{
-		"chat_id":    chatID,
-		"text":       text,
-		"parse_mode": "Markdown",
-	})
+	return sendMessage(ctx, client, token, chatID, text, "Markdown")
+}
+
+// SendPlain posts a message with no parse mode, for text that would trip
+// Markdown parsing (e.g. command names containing underscores).
+func SendPlain(ctx context.Context, client *http.Client, token string, chatID int64, text string) error {
+	return sendMessage(ctx, client, token, chatID, text, "")
+}
+
+func sendMessage(ctx context.Context, client *http.Client, token string, chatID int64, text, parseMode string) error {
+	payload := map[string]any{"chat_id": chatID, "text": text}
+	if parseMode != "" {
+		payload["parse_mode"] = parseMode
+	}
+	_, err := call(ctx, client, token, "sendMessage", payload)
+	return err
+}
+
+// SetCommands replaces the bot's command menu (setMyCommands, default scope).
+func SetCommands(ctx context.Context, client *http.Client, token string, cmds []Command) error {
+	_, err := call(ctx, client, token, "setMyCommands", map[string]any{"commands": cmds})
+	return err
+}
+
+// GetCommands returns the bot's current command menu (getMyCommands, default scope).
+func GetCommands(ctx context.Context, client *http.Client, token string) ([]Command, error) {
+	raw, err := call(ctx, client, token, "getMyCommands", map[string]any{})
 	if err != nil {
-		return err
+		return nil, err
+	}
+	var out struct {
+		Result []Command `json:"result"`
+	}
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return nil, fmt.Errorf("telegram: decode getMyCommands: %w", err)
+	}
+	return out.Result, nil
+}
+
+// call POSTs a JSON payload to a Bot API method and returns the raw response
+// body. Errors never include the bot token.
+func call(ctx context.Context, client *http.Client, token, method string, payload any) ([]byte, error) {
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return nil, err
 	}
 
-	endpoint := fmt.Sprintf("https://api.telegram.org/bot%s/sendMessage", token)
+	endpoint := fmt.Sprintf("https://api.telegram.org/bot%s/%s", token, method)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
 	if err != nil {
-		return err
+		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
 
@@ -37,17 +82,17 @@ func Send(ctx context.Context, client *http.Client, token string, chatID int64, 
 		// the underlying error before it reaches logs.
 		var uerr *url.Error
 		if errors.As(err, &uerr) {
-			return fmt.Errorf("telegram: request failed: %w", uerr.Err)
+			return nil, fmt.Errorf("telegram: %s failed: %w", method, uerr.Err)
 		}
-		return fmt.Errorf("telegram: request failed: %w", err)
+		return nil, fmt.Errorf("telegram: %s failed: %w", method, err)
 	}
 	defer resp.Body.Close()
-	// Cap the read: Telegram error bodies are small JSON, but never trust a
+	// Cap the read: Bot API responses are small JSON, but never trust a
 	// response size blindly.
-	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<16))
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("telegram: unexpected status %d: %s", resp.StatusCode, bytes.TrimSpace(respBody))
+		return nil, fmt.Errorf("telegram: %s: unexpected status %d: %s", method, resp.StatusCode, bytes.TrimSpace(respBody))
 	}
-	return nil
+	return respBody, nil
 }

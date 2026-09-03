@@ -22,8 +22,10 @@
       "Read(./.env)",
       "Bash(task migrate:*)",
       "Bash(task seed:*)",
+      "Bash(task setcommands:*)",
       "Bash(go run ./cmd/migrate:*)",
       "Bash(go run ./cmd/seed:*)",
+      "Bash(go run ./cmd/setcommands:*)",
       "Bash(vercel:*)",
       "Bash(npx vercel:*)",
       "Bash(git push:*)"

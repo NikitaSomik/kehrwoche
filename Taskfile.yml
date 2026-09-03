@@ -65,3 +65,8 @@ tasks:
     desc: 'Seed / regenerate the schedule — pass flags after `--`, e.g. task seed -- -dry'
     cmds:
       - go run ./cmd/seed {{.CLI_ARGS}}
+
+  setcommands:
+    desc: 'Push the bot command menu to Telegram (setMyCommands) — hits the API, run manually. `-- -show` prints the current menu'
+    cmds:
+      - go run ./cmd/setcommands {{.CLI_ARGS}}

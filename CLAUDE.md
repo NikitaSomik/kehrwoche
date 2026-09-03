@@ -18,6 +18,8 @@ Always use `task` (CI runs these exact tasks — don't call `go test`/`go vet` d
 | `task mcp` | run the MCP server over stdio (normally started by an MCP client, not by hand) |
 | `task migrate` | apply DB migrations — **hits the DB in `.env`, run manually only** |
 | `task seed -- <flags>` | seed / regenerate the schedule — **writes to the DB in `.env`, run manually only** |
+| `task setcommands` | push the bot command menu to Telegram (`setMyCommands`); `-- -show` prints the current one — **hits the Telegram API, run manually only** |
+| `task test:integration` | integration tests against a throwaway `postgres:17` (needs Docker) |
 
 Before committing: `task fmt && task vet && task lint && task test`.
 
@@ -30,7 +32,8 @@ Before committing: `task fmt && task vet && task lint && task test`.
 - `pkg/telegram` — `telegram.Send`, the only outbound HTTP.
 - `pkg/db` — `db.Connect`.
 - `pkg/config` — `config.Load()` reads every env var once into `Config`. Add new env vars here, not scattered `os.Getenv`.
-- `cmd/migrate`, `cmd/seed` — one-shot CLIs. `cmd/seed` also regenerates the rotation after a move-out (`-vacant`, `-regen -start`).
+- `cmd/migrate`, `cmd/seed` — one-shot CLIs. `cmd/seed` also regenerates the rotation after a move-out (`-vacant`, `-regen -start`). `cmd/migrate` is a thin wrapper over `internal/migrate.Apply`.
+- `cmd/setcommands` — one-shot CLI, pushes the Telegram command menu (`setMyCommands`) from `handler.MenuCommands()`; `-show` prints Telegram's current menu.
 - `cmd/mcp` — local MCP server (stdio) exposing the schedule read-only: `list_duties`, `on_duty`, `upcoming`. Thin adapter over `pkg/schedule`; opens a DB connection per call. Wired up in `.mcp.json` via `task mcp` (so it inherits `DATABASE_URL` from `.env`). Smoke-test with `scripts/mcp-smoke.sh`.
 - `migrations/*.sql` — plain SQL, applied in order by `cmd/migrate`.
 
@@ -46,7 +49,7 @@ Rooms are labelled `Zimmer N` (`RoomNo`/`ParseRoomNo`). All user-facing text is 
 
 `/*_plan` commands show `PlanWeeks` (4) weeks ahead. `DB schemas` table: `(duty_type, duty_date, room)` unique on `(duty_type, duty_date)`.
 
-Bot commands: `/toilette1`, `/toilette2`, `/treppenhaus` (hall), `/etage` (floor), `/waschkueche` (laundry), each with a `_plan` variant.
+Bot commands: `/toilette1`, `/toilette2`, `/treppenhaus` (hall), `/etage` (floor), `/waschkueche` (laundry), each with a `_plan` variant. Plus `/help` (command list, any chat) and `/start` (greeting, private chat only) — static text in `api/help.go`, handled before the DB path. The 10 duty commands and their German menu descriptions live in one place — `botCommands` in `api/webhook.go` — which drives the lookup map, `/help`, and `setMyCommands`. After changing them, run `task setcommands` to update the Telegram menu.
 
 ## Deployment
 

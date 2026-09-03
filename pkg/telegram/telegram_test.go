@@ -27,6 +27,20 @@ func fakeClient(status int, body string, err error) *http.Client {
 	}
 }
 
+// capturingClient records the request body and path of the last request.
+func capturingClient(status int, respBody string) (*http.Client, *string, *string) {
+	var gotBody, gotPath string
+	c := &http.Client{
+		Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+			b, _ := io.ReadAll(r.Body)
+			gotBody = string(b)
+			gotPath = r.URL.Path
+			return &http.Response{StatusCode: status, Body: io.NopCloser(strings.NewReader(respBody))}, nil
+		}),
+	}
+	return c, &gotBody, &gotPath
+}
+
 func TestSendSuccess(t *testing.T) {
 	client := fakeClient(http.StatusOK, "", nil)
 	if err := Send(context.Background(), client, "TOKEN", 1, "hi"); err != nil {
@@ -53,5 +67,59 @@ func TestSendTransportErrorDoesNotLeakToken(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "connection refused") {
 		t.Errorf("error lost the underlying cause: %v", err)
+	}
+}
+
+func TestSendUsesMarkdown(t *testing.T) {
+	client, body, path := capturingClient(http.StatusOK, "")
+	if err := Send(context.Background(), client, "T", 1, "hi"); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasSuffix(*path, "/sendMessage") {
+		t.Errorf("path = %q, want .../sendMessage", *path)
+	}
+	if !strings.Contains(*body, `"parse_mode":"Markdown"`) {
+		t.Errorf("Send did not set Markdown parse_mode: %s", *body)
+	}
+}
+
+func TestSendPlainOmitsParseMode(t *testing.T) {
+	client, body, _ := capturingClient(http.StatusOK, "")
+	if err := SendPlain(context.Background(), client, "T", 1, "/etage_plan"); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(*body, "parse_mode") {
+		t.Errorf("SendPlain set a parse_mode: %s", *body)
+	}
+	if !strings.Contains(*body, "/etage_plan") {
+		t.Errorf("body lost the text: %s", *body)
+	}
+}
+
+func TestSetCommandsPayload(t *testing.T) {
+	client, body, path := capturingClient(http.StatusOK, `{"ok":true,"result":true}`)
+	err := SetCommands(context.Background(), client, "T", []Command{
+		{Command: "help", Description: "Alle Befehle"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasSuffix(*path, "/setMyCommands") {
+		t.Errorf("path = %q, want .../setMyCommands", *path)
+	}
+	if !strings.Contains(*body, `"command":"help"`) || !strings.Contains(*body, `"description":"Alle Befehle"`) {
+		t.Errorf("unexpected setMyCommands payload: %s", *body)
+	}
+}
+
+func TestGetCommandsParsesResult(t *testing.T) {
+	resp := `{"ok":true,"result":[{"command":"help","description":"Alle Befehle"},{"command":"etage","description":"Etage"}]}`
+	client, _, _ := capturingClient(http.StatusOK, resp)
+	cmds, err := GetCommands(context.Background(), client, "T")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cmds) != 2 || cmds[0].Command != "help" || cmds[1].Description != "Etage" {
+		t.Errorf("got %+v", cmds)
 	}
 }
