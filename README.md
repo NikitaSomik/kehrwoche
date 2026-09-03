@@ -34,16 +34,32 @@ brew install go-task/tap/go-task   # macOS
 ```
 
 ```bash
-task test     # run tests
-task build    # compile all packages
-task vet      # go vet
-task lint     # golangci-lint
-task fmt      # gofmt
-task tidy     # tidy dependencies
-task migrate  # apply database migrations
-task seed -- -dry   # seed / regenerate the schedule (flags after --)
-task mcp      # run the MCP server (started by an MCP client, not by hand)
+task test              # unit tests (no database)
+task test:integration  # integration tests against a throwaway Postgres (needs Docker)
+task build             # compile all packages
+task vet               # go vet
+task lint              # golangci-lint
+task fmt               # gofmt
+task tidy              # tidy dependencies
+task migrate           # apply database migrations
+task seed -- -dry      # seed / regenerate the schedule (flags after --)
+task setcommands       # push the bot's command menu to Telegram (manual)
+task mcp               # run the MCP server (started by an MCP client, not by hand)
 ```
+
+## Integration tests
+
+`task test:integration` starts a disposable `postgres:17` container, applies the
+migrations, and runs the tests tagged `//go:build integration` against it — the
+SQL and pgx paths (`pkg/schedule/repo.go`, `cmd/seed`, `internal/migrate`) that
+the unit tests fake. Plain `task test` needs no database. CI runs both.
+
+## Bot commands
+
+`/toilette1`, `/toilette2`, `/treppenhaus`, `/etage`, `/waschkueche` — who's on
+duty this week — each with a `_plan` variant for the next 4 weeks, plus `/help`
+and `/start`. All defined in `pkg/botcmd`. `task setcommands` pushes the menu to
+Telegram (`setMyCommands`); `task setcommands -- -show` prints the current one.
 
 ## MCP server
 
