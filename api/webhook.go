@@ -21,17 +21,47 @@ import (
 
 type cmdHandler func(ctx context.Context, conn schedule.Querier, now time.Time) (string, error)
 
-var commands = map[string]cmdHandler{
-	"toilette1":        wer(schedule.DutyTypeToilet1),
-	"toilette1_plan":   plan(schedule.DutyTypeToilet1),
-	"toilette2":        wer(schedule.DutyTypeToilet2),
-	"toilette2_plan":   plan(schedule.DutyTypeToilet2),
-	"treppenhaus":      wer(schedule.DutyTypeHall),
-	"treppenhaus_plan": plan(schedule.DutyTypeHall),
-	"etage":            wer(schedule.DutyTypeFloor),
-	"etage_plan":       plan(schedule.DutyTypeFloor),
-	"waschkueche":      wer(schedule.DutyTypeLaundry),
-	"waschkueche_plan": plan(schedule.DutyTypeLaundry),
+// botCommand is one slash command: its name (no leading slash), the German
+// description shown in Telegram's command menu and /help, and its handler.
+type botCommand struct {
+	name    string
+	desc    string
+	handler cmdHandler
+}
+
+// botCommands is the single source of truth for the duty commands. The webhook
+// lookup map, the /help listing (api/help.go), and the setMyCommands payload
+// (cmd/setcommands via MenuCommands) all derive from it. Keep each wer/plan
+// pair together and in this order — /help groups by the pair.
+var botCommands = []botCommand{
+	{"toilette1", "Wer putzt diese Woche die Toilette 1?", wer(schedule.DutyTypeToilet1)},
+	{"toilette1_plan", "Plan für die nächsten 4 Wochen (Toilette 1)", plan(schedule.DutyTypeToilet1)},
+	{"toilette2", "Wer putzt diese Woche die Toilette 2?", wer(schedule.DutyTypeToilet2)},
+	{"toilette2_plan", "Plan für die nächsten 4 Wochen (Toilette 2)", plan(schedule.DutyTypeToilet2)},
+	{"treppenhaus", "Wer putzt diese Woche das Treppenhaus?", wer(schedule.DutyTypeHall)},
+	{"treppenhaus_plan", "Plan für die nächsten 4 Wochen (Treppenhaus)", plan(schedule.DutyTypeHall)},
+	{"etage", "Wer putzt diese Woche die Etage?", wer(schedule.DutyTypeFloor)},
+	{"etage_plan", "Plan für die nächsten 4 Wochen (Etage)", plan(schedule.DutyTypeFloor)},
+	{"waschkueche", "Wer putzt diese Woche die Waschküche?", wer(schedule.DutyTypeLaundry)},
+	{"waschkueche_plan", "Plan für die nächsten 4 Wochen (Waschküche)", plan(schedule.DutyTypeLaundry)},
+}
+
+var commands = func() map[string]cmdHandler {
+	m := make(map[string]cmdHandler, len(botCommands))
+	for _, c := range botCommands {
+		m[c.name] = c.handler
+	}
+	return m
+}()
+
+// MenuCommands returns the list for Telegram's setMyCommands in menu order:
+// the duty commands, then /help.
+func MenuCommands() []telegram.Command {
+	out := make([]telegram.Command, 0, len(botCommands)+1)
+	for _, c := range botCommands {
+		out = append(out, telegram.Command{Command: c.name, Description: c.desc})
+	}
+	return append(out, telegram.Command{Command: "help", Description: "Alle Befehle anzeigen"})
 }
 
 func Webhook(w http.ResponseWriter, r *http.Request) {
@@ -64,13 +94,23 @@ func Webhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	handle, ok := commands[update.Message.Command()]
-	if !ok {
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+	defer cancel()
+
+	cmd := update.Message.Command()
+
+	// /help (any chat) and /start (private only) are static text — no DB needed.
+	if reply, ok := staticCommand(cmd, update.Message.Chat.IsPrivate()); ok {
+		if err := telegram.SendPlain(ctx, http.DefaultClient, cfg.TelegramToken, update.Message.Chat.ID, reply); err != nil {
+			log.Printf("webhook: send static: %v", err)
+		}
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
-	defer cancel()
+	handle, ok := commands[cmd]
+	if !ok {
+		return
+	}
 
 	conn, err := db.Connect(ctx, cfg.DatabaseURL)
 	if err != nil {
