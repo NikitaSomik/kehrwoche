@@ -33,7 +33,8 @@ Before committing: `task fmt && task vet && task lint && task test`.
 - `pkg/db` — `db.Connect`.
 - `pkg/config` — `config.Load()` reads every env var once into `Config`. Add new env vars here, not scattered `os.Getenv`.
 - `cmd/migrate`, `cmd/seed` — one-shot CLIs. `cmd/seed` also regenerates the rotation after a move-out (`-vacant`, `-regen -start`). `cmd/migrate` is a thin wrapper over `internal/migrate.Apply`.
-- `cmd/setcommands` — one-shot CLI, pushes the Telegram command menu (`setMyCommands`) from `handler.MenuCommands()`; `-show` prints Telegram's current menu.
+- `cmd/setcommands` — one-shot CLI, pushes the Telegram command menu (`setMyCommands`) from `botcmd.Menu()`; `-show` prints Telegram's current menu.
+- `pkg/botcmd` — the bot's slash commands: `duties` (name + German description + handler) is the single source of truth; `Lookup` (webhook dispatch), `Menu` (setMyCommands), `StaticReply` (`/help` any chat, `/start` private only). `wer`/`plan` handlers live here. Kept out of `api/` because Vercel builds every `api/*.go` as its own function.
 - `cmd/mcp` — local MCP server (stdio) exposing the schedule read-only: `list_duties`, `on_duty`, `upcoming`. Thin adapter over `pkg/schedule`; opens a DB connection per call. Wired up in `.mcp.json` via `task mcp` (so it inherits `DATABASE_URL` from `.env`). Smoke-test with `scripts/mcp-smoke.sh`.
 - `migrations/*.sql` — plain SQL, applied in order by `cmd/migrate`.
 
@@ -49,7 +50,7 @@ Rooms are labelled `Zimmer N` (`RoomNo`/`ParseRoomNo`). All user-facing text is 
 
 `/*_plan` commands show `PlanWeeks` (4) weeks ahead. `DB schemas` table: `(duty_type, duty_date, room)` unique on `(duty_type, duty_date)`.
 
-Bot commands: `/toilette1`, `/toilette2`, `/treppenhaus` (hall), `/etage` (floor), `/waschkueche` (laundry), each with a `_plan` variant. Plus `/help` (command list, any chat) and `/start` (greeting, private chat only) — static text in `api/help.go`, handled before the DB path. The 10 duty commands and their German menu descriptions live in one place — `botCommands` in `api/webhook.go` — which drives the lookup map, `/help`, and `setMyCommands`. After changing them, run `task setcommands` to update the Telegram menu.
+Bot commands: `/toilette1`, `/toilette2`, `/treppenhaus` (hall), `/etage` (floor), `/waschkueche` (laundry), each with a `_plan` variant. Plus `/help` (command list, any chat) and `/start` (greeting, private chat only). All defined in `pkg/botcmd` — the `duties` slice there (name + German description + handler) drives the webhook dispatch, `/help`, and `setMyCommands`. After changing it, run `task setcommands` to update the Telegram menu (BotFather is no longer used).
 
 ## Deployment
 
@@ -60,5 +61,6 @@ Bot commands: `/toilette1`, `/toilette2`, `/treppenhaus` (hall), `/etage` (floor
 ## Conventions
 
 - Go 1.27, `golangci-lint` v2 (`errcheck`, `govet`, `ineffassign`, `staticcheck`, `unused`, `gosec`).
+- `api/` holds function entrypoints only: every non-test `.go` there must export one `func Name(w http.ResponseWriter, r *http.Request)` — Vercel builds each file as a separate serverless function. Shared logic goes in `pkg/`.
 - Keep new date/cadence logic derived from `configs` — don't duplicate weekday literals (see the `EventWeekdays` comment).
 - Commit messages: no `Co-Authored-By` trailers.

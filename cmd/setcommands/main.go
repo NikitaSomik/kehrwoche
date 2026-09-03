@@ -1,5 +1,5 @@
 // Command setcommands pushes the bot's command menu to Telegram via
-// setMyCommands, built from the same list the webhook serves (api.MenuCommands).
+// setMyCommands, built from the same list the webhook serves (botcmd.Menu).
 // It changes the bot's public config and hits the Telegram API — run it by hand.
 //
 //	task setcommands           # push the command menu
@@ -13,7 +13,7 @@ import (
 	"net/http"
 	"os"
 
-	handler "github.com/nikitasomusev/kehrwoche/api"
+	"github.com/nikitasomusev/kehrwoche/pkg/botcmd"
 	"github.com/nikitasomusev/kehrwoche/pkg/config"
 	"github.com/nikitasomusev/kehrwoche/pkg/telegram"
 )
@@ -45,7 +45,7 @@ func run(ctx context.Context, show bool) error {
 		return nil
 	}
 
-	cmds := handler.MenuCommands()
+	cmds := botcmd.Menu()
 	if err := telegram.SetCommands(ctx, http.DefaultClient, token, cmds); err != nil {
 		return err
 	}
