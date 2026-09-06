@@ -11,6 +11,10 @@ type Config struct {
 	WebhookSecret string
 	CronSecret    string
 	ChatID        string
+	// AdminChatID receives maintenance notices (the schedule running out)
+	// that only the person who runs cmd/seed can act on. Empty disables them
+	// rather than falling back to the group chat.
+	AdminChatID string
 }
 
 func Load() Config {
@@ -20,5 +24,6 @@ func Load() Config {
 		WebhookSecret: os.Getenv("WEBHOOK_SECRET"),
 		CronSecret:    os.Getenv("CRON_SECRET"),
 		ChatID:        os.Getenv("CHAT_ID"),
+		AdminChatID:   os.Getenv("ADMIN_CHAT_ID"),
 	}
 }

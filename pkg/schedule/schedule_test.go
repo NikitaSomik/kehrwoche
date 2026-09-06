@@ -1,6 +1,7 @@
 package schedule
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
@@ -179,4 +180,49 @@ func TestCleaningWindow(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestIsBlockAndHorizonDuties(t *testing.T) {
+	if !IsBlock(DutyTypeHall) {
+		t.Error("Treppenhaus is planned in blocks, not on a rolling horizon")
+	}
+	for _, d := range []DutyType{DutyTypeToilet1, DutyTypeToilet2, DutyTypeFloor, DutyTypeLaundry} {
+		if IsBlock(d) {
+			t.Errorf("%s should not be a block duty", d)
+		}
+	}
+
+	// Every duty but the staircase — a gap in the others is a real shortage,
+	// a gap in Treppenhaus is another floor's turn.
+	got := HorizonDuties()
+	if len(got) != len(AllDutyTypes())-1 {
+		t.Fatalf("got %d duties, want %d", len(got), len(AllDutyTypes())-1)
+	}
+	for _, d := range got {
+		if d == DutyTypeHall {
+			t.Error("HorizonDuties must not include Treppenhaus")
+		}
+	}
+}
+
+func TestFormatHorizonWarning(t *testing.T) {
+	t.Run("nothing to report sends nothing", func(t *testing.T) {
+		if got := FormatHorizonWarning(nil); got != "" {
+			t.Errorf("got %q, want empty so the caller skips sending", got)
+		}
+	})
+
+	t.Run("names the duty and its last planned day", func(t *testing.T) {
+		last, _ := time.Parse("2006-01-02", "2026-10-30") // a Friday
+		got := FormatHorizonWarning([]HorizonGap{
+			{Duty: DutyTypeFloor, Last: last, Planned: true},
+			{Duty: DutyTypeLaundry},
+		})
+
+		for _, want := range []string{"Etage", "nur bis Fr, 30.10", "Waschküche", "keine Planung", "task seed"} {
+			if !strings.Contains(got, want) {
+				t.Errorf("message is missing %q:\n%s", want, got)
+			}
+		}
+	})
 }

@@ -26,7 +26,7 @@ Before committing: `task fmt && task vet && task lint && task test`.
 ## Architecture
 
 - `api/webhook.go` — Vercel function (`func Webhook`), handles Telegram slash commands. Auth: `X-Telegram-Bot-Api-Secret-Token` header, constant-time compare, fail-closed. Always returns 200 (Telegram retries non-200 → duplicate messages); errors are logged only.
-- `api/cron.go` — Vercel function (`func Cron`), sends the scheduled reminder. Auth: `Authorization: Bearer <CRON_SECRET>`. Cron cadence is in `vercel.json` (two entries covering summer/winter local time).
+- `api/cron.go` — Vercel function (`func Cron`), sends the scheduled reminder. Auth: `Authorization: Bearer <CRON_SECRET>`. Cron cadence is in `vercel.json` (two entries covering summer/winter local time). Once a week it also runs `warnHorizon`: `schedule.HorizonGaps` over `schedule.HorizonDuties()`, messaged privately to `ADMIN_CHAT_ID` (skipped when unset — never sent to the group).
 - `pkg/schedule` — domain logic: duty types, recurrence rules, date math, message formatting. No I/O except `repo.go`.
   - `pkg/schedule/repo.go` — the only place with SQL. `Querier` interface is satisfied by a pgx connection; tests use fakes.
 - `pkg/telegram` — the only outbound HTTP: `Send` / `SendPlain` (messages) and `SetCommands` / `GetCommands` (the command menu), all over one `call` helper that keeps the bot token out of errors.
@@ -50,7 +50,7 @@ Recurrence in `pkg/schedule/schedule.go` `configs`:
 
 Rooms are labelled `Zimmer N` (`RoomNo`/`ParseRoomNo`). All user-facing text is German; weekday abbreviations `Mo`..`So`. Timezone is always `Europe/Berlin` (`_ "time/tzdata"` is imported for the Vercel runtime).
 
-`/*_plan` commands show `PlanWeeks` (4) weeks ahead. `DB schemas` table: `(duty_type, duty_date, room)` unique on `(duty_type, duty_date)`.
+`/*_plan` commands show `PlanWeeks` (4) weeks ahead; `HorizonWeeks` equals it, and is both the default `-weeks` for `cmd/seed` and the point at which the cron warns a duty is running out. `schedule.IsBlock` marks the duties planned one block at a time (only `hall`) — they're excluded from `HorizonDuties()` and from seed's `defaultDuties`. `DB schemas` table: `(duty_type, duty_date, room)` unique on `(duty_type, duty_date)`.
 
 Bot commands: `/toilette1`, `/toilette2`, `/treppenhaus` (hall), `/etage` (floor), `/waschkueche` (laundry), each with a `_plan` variant. Plus `/help` (command list, any chat) and `/start` (greeting, private chat only). All defined in `pkg/botcmd` — the `duties` slice there (name + German description + handler) drives the webhook dispatch, `/help`, and `setMyCommands`. After changing it, run `task setcommands` to update the Telegram menu (BotFather is no longer used).
 
@@ -64,7 +64,7 @@ Bot commands: `/toilette1`, `/toilette2`, `/treppenhaus` (hall), `/etage` (floor
 
 - `main` → production (Vercel `--prod`), `dev` → preview. Deploy is automatic from CI on push — never run `vercel` locally.
 - On push to `main`, CI also runs `task migrate` against the production DB.
-- Secrets live in `.env` locally and the Vercel dashboard: `TELEGRAM_BOT_TOKEN`, `CHAT_ID`, `DATABASE_URL`, `WEBHOOK_SECRET`, `CRON_SECRET`. Never read, print, or commit `.env`.
+- Secrets live in `.env` locally and the Vercel dashboard: `TELEGRAM_BOT_TOKEN`, `CHAT_ID`, `DATABASE_URL`, `WEBHOOK_SECRET`, `CRON_SECRET`, `ADMIN_CHAT_ID` (optional). Never read, print, or commit `.env`.
 
 ## Conventions
 

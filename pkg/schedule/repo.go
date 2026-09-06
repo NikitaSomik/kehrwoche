@@ -3,6 +3,7 @@ package schedule
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -44,6 +45,27 @@ func LastGenerated(ctx context.Context, conn Querier, dutyType DutyType) (time.T
 		return time.Time{}, false, nil
 	}
 	return *last, true, nil
+}
+
+// HorizonGaps returns those of dutyTypes whose schedule ends within
+// HorizonWeeks of now, keeping the order it was given. A duty with no rows at
+// all counts as a gap.
+func HorizonGaps(ctx context.Context, conn Querier, dutyTypes []DutyType, now time.Time) ([]HorizonGap, error) {
+	cutoff := dateOnly(now).AddDate(0, 0, HorizonWeeks*7)
+	var gaps []HorizonGap
+	for _, d := range dutyTypes {
+		last, ok, err := LastGenerated(ctx, conn, d)
+		if err != nil {
+			return nil, fmt.Errorf("horizon %s: %w", d, err)
+		}
+		switch {
+		case !ok:
+			gaps = append(gaps, HorizonGap{Duty: d})
+		case last.Before(cutoff):
+			gaps = append(gaps, HorizonGap{Duty: d, Last: last, Planned: true})
+		}
+	}
+	return gaps, nil
 }
 
 func GetUpcoming(ctx context.Context, conn Querier, dutyType DutyType, from time.Time, n int) ([]Entry, error) {

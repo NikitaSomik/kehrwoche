@@ -70,28 +70,18 @@ func generatable() []schedule.DutyType {
 }
 
 // defaultDuties is what runs when -duty is omitted: everything generatable
-// that isn't a block duty. Treppenhaus is left out on purpose — its weeks are
+// that isn't a block duty (schedule.IsBlock). Treppenhaus is left out on purpose — its weeks are
 // handed to us by the house a block at a time, so extending it by the same
 // horizon as the rest would invent dates we don't own. It has to be asked for
 // by name.
 func defaultDuties() []schedule.DutyType {
 	out := make([]schedule.DutyType, 0, len(rotations))
 	for _, d := range generatable() {
-		if !isBlock(d) {
+		if !schedule.IsBlock(d) {
 			out = append(out, d)
 		}
 	}
 	return out
-}
-
-// isBlock reports whether a duty is seeded one complete pass at a time instead
-// of on a rolling horizon. The staircase rotates between the floors of the
-// house: when our turn comes round, every occupied room takes one week in
-// order, and then the next floor takes over. So the block is exactly as long
-// as there are occupied rooms, and it always restarts at the first of them —
-// -weeks and the carry-over from the previous block don't apply.
-func isBlock(d schedule.DutyType) bool {
-	return d == schedule.DutyTypeHall
 }
 
 const dateLayout = "2006-01-02"
@@ -112,7 +102,11 @@ func periods(weeks int, d schedule.DutyType) int {
 
 func main() {
 	dutyStr := flag.String("duty", "", "comma-separated duties to target (default: every duty except hall, which must be named explicitly)")
-	weeks := flag.Int("weeks", 26, "weeks of schedule to generate per duty (laundry runs twice a week, so it gets twice the rows; ignored for hall, whose block length is the number of occupied rooms)")
+	// schedule.HorizonWeeks at a time: the cron warns once the plan has that
+	// much left, so topping up by the same amount keeps a rolling one-to-two
+	// months ahead. Short on purpose — the occupied rooms are re-stated at
+	// every run, so a stale -vacant can only ever mislead for that long.
+	weeks := flag.Int("weeks", schedule.HorizonWeeks, "weeks of schedule to generate per duty (laundry runs twice a week, so it gets twice the rows; ignored for hall, whose block length is the number of occupied rooms)")
 	startStr := flag.String("start", "", "start date YYYY-MM-DD (required for a duty with no rows yet, or with -regen)")
 	vacantStr := flag.String("vacant", "", "comma-separated vacant room numbers (omit to be prompted)")
 	regen := flag.Bool("regen", false, "delete existing rows from -start forward, then regenerate (use after a move-out)")
@@ -184,7 +178,7 @@ func seed(ctx context.Context, conn seedConn, p seedParams) error {
 	// that already has rows and seeding would run straight on from the last
 	// block, filling in weeks that belong to the other floors.
 	for _, duty := range p.duties {
-		if isBlock(duty) && !p.regen {
+		if schedule.IsBlock(duty) && !p.regen {
 			return fmt.Errorf("%s: seed it with -regen -start <first Friday of the block>", duty)
 		}
 	}
@@ -201,7 +195,7 @@ func seed(ctx context.Context, conn seedConn, p seedParams) error {
 			fmt.Printf("%s: no occupied rooms, skipped\n", duty.Label())
 			continue
 		}
-		block := isBlock(duty)
+		block := schedule.IsBlock(duty)
 		n := periods(p.weeks, duty)
 		if block {
 			// Announce it: -weeks has no say here, and silently ignoring a flag
@@ -245,7 +239,7 @@ type plannedRow struct {
 }
 
 // restart makes the run begin at the first occupied room instead of carrying
-// on from the last assignment — see isBlock.
+// on from the last assignment — see schedule.IsBlock.
 func planDuty(ctx context.Context, tx txQuerier, duty schedule.DutyType, rotation, active []int, n int, startStr string, regen, restart bool) ([]plannedRow, error) {
 	var date time.Time
 	var idx int

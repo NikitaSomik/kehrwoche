@@ -284,3 +284,70 @@ func assertEntries(t *testing.T, got, want []Entry) {
 		}
 	}
 }
+
+// perDutyQuerier answers max(duty_date) differently per duty, which is what
+// HorizonGaps needs — one duty short of rows while the others are fine.
+type perDutyQuerier struct {
+	dates map[DutyType]*time.Time
+	err   error
+}
+
+func (q perDutyQuerier) QueryRow(ctx context.Context, sql string, args ...any) pgx.Row {
+	if q.err != nil {
+		return fakeMaxRow{err: q.err}
+	}
+	return fakeMaxRow{date: q.dates[args[0].(DutyType)]}
+}
+
+func (q perDutyQuerier) Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error) {
+	return nil, errors.New("perDutyQuerier: Query not used")
+}
+
+func TestHorizonGaps(t *testing.T) {
+	now := mustDate("2026-09-06")
+	cutoff := mustDate("2026-10-04") // now + HorizonWeeks
+	far := mustDate("2026-12-31")
+	near := mustDate("2026-09-25")
+
+	t.Run("reports only what runs out inside the horizon", func(t *testing.T) {
+		q := perDutyQuerier{dates: map[DutyType]*time.Time{
+			DutyTypeToilet1: &far,
+			DutyTypeToilet2: &near,
+			DutyTypeFloor:   nil, // no rows at all
+			DutyTypeLaundry: &far,
+		}}
+
+		gaps, err := HorizonGaps(context.Background(), q, HorizonDuties(), now)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(gaps) != 2 {
+			t.Fatalf("got %d gaps, want 2: %+v", len(gaps), gaps)
+		}
+		if gaps[0].Duty != DutyTypeToilet2 || !gaps[0].Planned || !gaps[0].Last.Equal(near) {
+			t.Errorf("first gap: got %+v, want toilet2 planned to %s", gaps[0], near)
+		}
+		if gaps[1].Duty != DutyTypeFloor || gaps[1].Planned {
+			t.Errorf("second gap: got %+v, want floor with no planning", gaps[1])
+		}
+	})
+
+	t.Run("exactly at the horizon is not yet a gap", func(t *testing.T) {
+		q := perDutyQuerier{dates: map[DutyType]*time.Time{DutyTypeFloor: &cutoff}}
+		gaps, err := HorizonGaps(context.Background(), q, []DutyType{DutyTypeFloor}, now)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(gaps) != 0 {
+			t.Errorf("got %+v, want no gaps", gaps)
+		}
+	})
+
+	t.Run("query error is returned", func(t *testing.T) {
+		wantErr := errors.New("connection reset")
+		q := perDutyQuerier{err: wantErr}
+		if _, err := HorizonGaps(context.Background(), q, HorizonDuties(), now); !errors.Is(err, wantErr) {
+			t.Errorf("got err %v, want %v", err, wantErr)
+		}
+	})
+}

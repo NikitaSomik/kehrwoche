@@ -21,12 +21,68 @@ const (
 // PlanWeeks is the look-ahead horizon `/*_plan` commands show, in weeks.
 const PlanWeeks = 4
 
+// HorizonWeeks is how far ahead a rolling-horizon duty has to stay planned
+// before the bot asks for more rows. It equals PlanWeeks on purpose: the
+// warning then arrives exactly when `/*_plan` can no longer show a full
+// listing, which is the first moment the shortage is visible to anyone.
+const HorizonWeeks = PlanWeeks
+
 // AllDutyTypes lists every duty in a stable order, for callers that need to
 // enumerate them (status reports, seeding).
 func AllDutyTypes() []DutyType {
 	return []DutyType{
 		DutyTypeToilet1, DutyTypeToilet2, DutyTypeHall, DutyTypeFloor, DutyTypeLaundry,
 	}
+}
+
+// IsBlock reports whether a duty is planned one complete block at a time
+// rather than on a rolling horizon. Treppenhaus is: the staircase rotates
+// between the floors of the house, so our weeks arrive as a block on dates the
+// house sets, and the stretches with no rows in between are the other floors'
+// turns rather than holes in the plan. Anything that assumes a continuous
+// schedule has to leave such a duty out.
+func IsBlock(d DutyType) bool {
+	return d == DutyTypeHall
+}
+
+// HorizonDuties lists the duties planned on a rolling horizon, so running out
+// of rows is a real shortage worth reporting.
+func HorizonDuties() []DutyType {
+	out := make([]DutyType, 0, len(configs))
+	for _, d := range AllDutyTypes() {
+		if !IsBlock(d) {
+			out = append(out, d)
+		}
+	}
+	return out
+}
+
+// HorizonGap is a duty whose schedule ends inside HorizonWeeks. Planned is
+// false when it has no rows at all, in which case Last is zero.
+type HorizonGap struct {
+	Duty    DutyType
+	Last    time.Time
+	Planned bool
+}
+
+// FormatHorizonWarning renders the notice sent when the schedule is running
+// low. It returns "" for no gaps so the caller can skip sending entirely.
+func FormatHorizonWarning(gaps []HorizonGap) string {
+	if len(gaps) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("⚠️ *Der Putzplan läuft aus*\n\n")
+	for _, g := range gaps {
+		if !g.Planned {
+			fmt.Fprintf(&b, "*%s*: keine Planung\n", g.Duty.Label())
+			continue
+		}
+		fmt.Fprintf(&b, "*%s*: nur bis %s, %02d.%02d\n",
+			g.Duty.Label(), germanWeekday(g.Last.Weekday()), g.Last.Day(), int(g.Last.Month()))
+	}
+	b.WriteString("\nNachgenerieren: `task seed -- -dry`")
+	return b.String()
 }
 
 func RoomNo(n int) string {
