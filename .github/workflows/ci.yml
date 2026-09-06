@@ -45,6 +45,9 @@ jobs:
         with:
           version: v2.13.2
 
+      - name: Vulnerabilities
+        run: task vuln
+
       - name: Test
         run: task test
 

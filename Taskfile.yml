@@ -23,6 +23,13 @@ tasks:
       - for i in $(seq 1 30); do docker exec kw-pgtest pg_isready -U postgres -d kehrwoche -q && break || sleep 0.5; done
       - TEST_DATABASE_URL='{{.PG_URL}}' go test -tags=integration -p 1 -count=1 ./...
 
+  vuln:
+    desc: Scan dependencies for known vulnerabilities (govulncheck)
+    cmds:
+      # Pinned, not @latest: CI must not pull a fresh build of a tool on every
+      # run. Bump this deliberately.
+      - go run golang.org/x/vuln/cmd/govulncheck@v1.7.0 ./...
+
   fmt:
     desc: Format Go source files
     cmds:
