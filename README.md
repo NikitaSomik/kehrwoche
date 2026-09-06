@@ -109,7 +109,18 @@ the commit is gone, since forks and caches keep it.
 `cmd/seed` fills the `schedules` table. `-weeks` is the horizon per duty
 (laundry runs twice a week, so it gets twice the rows). Always dry-run first.
 
+Run it with no flags and it asks: which duties, how many weeks, which rooms are
+empty — then prints the plan and waits for a yes before writing. Any flag you
+do pass is taken as given and not asked about, so the commands below still work
+unchanged, and a piped or redirected stdin skips every question rather than
+hanging a script.
+
+`-regen` is the exception: it is never offered as a question. It deletes every
+row from `-start` forward with no upper bound, and that should cost typing a
+flag rather than a keystroke at the wrong moment.
+
 ```bash
+task seed                                                    # ask for everything
 task seed -- -dry                                            # continue every duty, 26 weeks
 task seed -- -vacant 1,6 -regen -start 2026-08-28 -dry       # rewrite the future after a move-out
 task seed -- -duty laundry -weeks 12 -regen -start 2026-09-04 -dry

@@ -182,6 +182,49 @@ func TestSeed_DryRunWritesNothing(t *testing.T) {
 	}
 }
 
+// Declining the confirmation has to leave the database exactly as it was. The
+// rows are already staged in the transaction by then, so this is really a test
+// that the rollback path is the one taken.
+func TestSeed_DecliningTheConfirmationWritesNothing(t *testing.T) {
+	conn := pgtest.Connect(t)
+
+	err := seed(context.Background(), conn, seedParams{
+		duties:  []schedule.DutyType{schedule.DutyTypeToilet1},
+		weeks:   3,
+		start:   "2026-06-19",
+		vacant:  map[int]bool{},
+		confirm: func() bool { return false },
+	})
+	if err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	if got := rowsFor(t, conn, schedule.DutyTypeToilet1); len(got) != 0 {
+		t.Errorf("a declined run wrote %d rows, want 0", len(got))
+	}
+}
+
+// The same run, approved, must write — otherwise the test above would pass for
+// the wrong reason.
+func TestSeed_ApprovingTheConfirmationWrites(t *testing.T) {
+	conn := pgtest.Connect(t)
+
+	err := seed(context.Background(), conn, seedParams{
+		duties:  []schedule.DutyType{schedule.DutyTypeToilet1},
+		weeks:   3,
+		start:   "2026-06-19",
+		vacant:  map[int]bool{},
+		confirm: func() bool { return true },
+	})
+	if err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	if got := rowsFor(t, conn, schedule.DutyTypeToilet1); len(got) != 3 {
+		t.Errorf("an approved run wrote %d rows, want 3", len(got))
+	}
+}
+
 func TestSeed_LaundryTwiceWeekly(t *testing.T) {
 	conn := pgtest.Connect(t)
 

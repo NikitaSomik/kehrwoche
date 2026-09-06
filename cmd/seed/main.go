@@ -19,7 +19,6 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	"errors"
 	"flag"
@@ -119,25 +118,68 @@ func main() {
 	dry := flag.Bool("dry", false, "print planned rows without writing")
 	flag.Parse()
 
-	if err := run(context.Background(), *dutyStr, *weeks, *startStr, *vacantStr, *regen, *dry); err != nil {
+	// Which flags were actually typed, as opposed to left at their default.
+	// -weeks 26 and an untouched -weeks look identical in the value alone.
+	given := make(map[string]bool)
+	flag.Visit(func(f *flag.Flag) { given[f.Name] = true })
+
+	f := cliFlags{
+		duty:   *dutyStr,
+		weeks:  *weeks,
+		start:  *startStr,
+		vacant: *vacantStr,
+		regen:  *regen,
+		dry:    *dry,
+		given:  given,
+	}
+	if err := run(context.Background(), newAsker(), f); err != nil {
 		fmt.Fprintln(os.Stderr, "seed:", err)
 		os.Exit(1)
 	}
 }
 
-// run wires the CLI flags to seed: it resolves the duty list, prompts for
-// vacant rooms if needed, and opens the connection from DATABASE_URL.
-func run(ctx context.Context, dutyStr string, weeks int, startStr, vacantStr string, regen, dry bool) error {
-	if regen && startStr == "" {
-		return fmt.Errorf("-regen requires -start")
-	}
+// cliFlags is what the command line carried, plus which of it was actually
+// typed — a value alone can't tell a default from a deliberate one.
+type cliFlags struct {
+	duty   string
+	weeks  int
+	start  string
+	vacant string
+	regen  bool
+	dry    bool
+	given  map[string]bool
+}
 
-	duties, err := selectedDuties(dutyStr)
+// run wires the CLI flags to seed, asking for whatever was left out, and opens
+// the connection from DATABASE_URL.
+//
+// -regen is deliberately never prompted for. It deletes every row from -start
+// forward with no upper bound, and a question with a default is the wrong
+// shape for that: destroying months of schedule should take typing the flag,
+// not pressing a key at the wrong moment.
+func run(ctx context.Context, a *asker, f cliFlags) error {
+	if !f.given["duty"] {
+		f.duty = a.line("Duties to seed (comma-separated, empty = "+dutyNames(defaultDuties())+")", "")
+	}
+	duties, err := selectedDuties(f.duty)
 	if err != nil {
 		return err
 	}
 
-	vacant, err := resolveVacant(vacantStr)
+	if f.regen && f.start == "" {
+		f.start, err = a.requireValue("Start date YYYY-MM-DD (rows from here on are deleted and rewritten)", "-start")
+		if err != nil {
+			return err
+		}
+	}
+
+	// -weeks has no say over a block duty, so don't ask about it when that's
+	// all we're seeding — the horizon there is the number of occupied rooms.
+	if !f.given["weeks"] && !allBlock(duties) {
+		f.weeks = a.intVal("Weeks of schedule per duty", f.weeks)
+	}
+
+	vacant, err := resolveVacant(f.vacant, a)
 	if err != nil {
 		return err
 	}
@@ -149,12 +191,13 @@ func run(ctx context.Context, dutyStr string, weeks int, startStr, vacantStr str
 	defer func() { _ = conn.Close(ctx) }()
 
 	return seed(ctx, conn, seedParams{
-		duties: duties,
-		weeks:  weeks,
-		start:  startStr,
-		vacant: vacant,
-		regen:  regen,
-		dry:    dry,
+		duties:  duties,
+		weeks:   f.weeks,
+		start:   f.start,
+		vacant:  vacant,
+		regen:   f.regen,
+		dry:     f.dry,
+		confirm: func() bool { return a.confirm("Write this to the database in .env?") },
 	})
 }
 
@@ -171,6 +214,9 @@ type seedParams struct {
 	vacant map[int]bool
 	regen  bool
 	dry    bool
+	// confirm is asked once the whole plan has been printed and staged in the
+	// transaction, but before it is committed. nil means don't ask.
+	confirm func() bool
 }
 
 // seed generates and writes rows for each duty in one transaction, rolling
@@ -230,6 +276,13 @@ func seed(ctx context.Context, conn seedConn, p seedParams) error {
 
 	if p.dry {
 		fmt.Println("seed: dry run, nothing written")
+		return nil
+	}
+	// Everything above is already staged in the transaction, so declining here
+	// costs nothing: the deferred Rollback undoes it. That turns "always run
+	// -dry first" from a habit into something the tool enforces.
+	if p.confirm != nil && !p.confirm() {
+		fmt.Println("seed: cancelled, nothing written")
 		return nil
 	}
 	if err := tx.Commit(ctx); err != nil {
@@ -413,12 +466,10 @@ func nextActiveIndex(rotation, active []int, lastRoom int) int {
 	return 0
 }
 
-func resolveVacant(flagVal string) (map[int]bool, error) {
+func resolveVacant(flagVal string, a *asker) (map[int]bool, error) {
 	raw := flagVal
 	if raw == "" {
-		fmt.Print("Vacant room numbers (comma-separated, empty = all occupied): ")
-		line, _ := bufio.NewReader(os.Stdin).ReadString('\n')
-		raw = strings.TrimSpace(line)
+		raw = a.line("Vacant room numbers (comma-separated, empty = all occupied)", "")
 	}
 	vacant := make(map[int]bool)
 	if raw == "" {
@@ -432,4 +483,24 @@ func resolveVacant(flagVal string) (map[int]bool, error) {
 		vacant[n] = true
 	}
 	return vacant, nil
+}
+
+// dutyNames renders a duty list for a prompt.
+func dutyNames(duties []schedule.DutyType) string {
+	names := make([]string, len(duties))
+	for i, d := range duties {
+		names[i] = string(d)
+	}
+	return strings.Join(names, ",")
+}
+
+// allBlock reports whether every duty selected is seeded a block at a time,
+// which is when -weeks stops meaning anything.
+func allBlock(duties []schedule.DutyType) bool {
+	for _, d := range duties {
+		if !isBlock(d) {
+			return false
+		}
+	}
+	return len(duties) > 0
 }
