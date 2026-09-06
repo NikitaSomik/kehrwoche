@@ -25,10 +25,11 @@ Before committing: `task fmt && task vet && task lint && task test`.
 
 ## Architecture
 
-- `api/webhook.go` — Vercel function (`func Webhook`), handles Telegram slash commands. Auth: `X-Telegram-Bot-Api-Secret-Token` header, constant-time compare, fail-closed. Always returns 200 (Telegram retries non-200 → duplicate messages); errors are logged only.
+- `api/webhook.go` — Vercel function (`func Webhook`), handles Telegram slash commands. Auth: `X-Telegram-Bot-Api-Secret-Token` header, constant-time compare, fail-closed. Always returns 200 (Telegram retries non-200 → duplicate messages); errors are logged only. Also records the sender in `users` (`recordUser` on the dispatch path, which already holds a connection; `recordSender` opens one for `/start`, the only static reply that touches the DB).
 - `api/cron.go` — Vercel function (`func Cron`), sends the scheduled reminder. Auth: `Authorization: Bearer <CRON_SECRET>`. Cron cadence is in `vercel.json` (two entries covering summer/winter local time).
 - `pkg/schedule` — domain logic: duty types, recurrence rules, date math, message formatting. No I/O except `repo.go`.
-  - `pkg/schedule/repo.go` — the only place with SQL. `Querier` interface is satisfied by a pgx connection; tests use fakes.
+  - `pkg/schedule/repo.go` — all SQL for the schedule. `Querier` interface is satisfied by a pgx connection; tests use fakes.
+- `pkg/users` — the `users` table, the only SQL outside `pkg/schedule`. `Record` is a single `INSERT ... ON CONFLICT DO NOTHING`; `Execer` is the write half of a pgx connection so tests can fake it.
 - `pkg/telegram` — the only outbound HTTP: `Send` / `SendPlain` (messages) and `SetCommands` / `GetCommands` (the command menu), all over one `call` helper that keeps the bot token out of errors.
 - `pkg/botcmd` — the bot's slash commands. The `duties` slice (name + German description + handler) is the single source of truth; `Lookup` (webhook dispatch), `Menu` (`setMyCommands` payload), `StaticReply` (`/help` any chat, `/start` private only). `wer`/`plan` handlers live here. Kept out of `api/` because Vercel builds every `api/*.go` as its own function.
 - `pkg/db` — `db.Connect`.
@@ -37,7 +38,7 @@ Before committing: `task fmt && task vet && task lint && task test`.
 - `cmd/setcommands` — one-shot CLI, pushes the Telegram command menu (`setMyCommands`) from `botcmd.Menu()` to every scope (default + `all_private_chats` + `all_group_chats` + `all_chat_administrators`), so an old scope-specific list can't shadow it; `-show` prints each scope's current menu.
 - `cmd/mcp` — local MCP server (stdio) exposing the schedule read-only: `list_duties`, `on_duty`, `upcoming`. Thin adapter over `pkg/schedule`; opens a DB connection per call. Wired up in `.mcp.json` via `task mcp` (so it inherits `DATABASE_URL` from `.env`). Smoke-test with `scripts/mcp-smoke.sh`.
 - `internal/migrate` — `Apply(ctx, conn, dir)`, the migration runner shared by `cmd/migrate` and the integration tests.
-- `internal/pgtest` — integration-test helpers (`Raw` / `Connect` / `MigrationsDir`); `t.Skip` when `TEST_DATABASE_URL` is unset.
+- `internal/pgtest` — integration-test helpers (`Raw` / `Connect` / `MigrationsDir`); `t.Skip` when `TEST_DATABASE_URL` is unset. `Raw` drops every application table by name — add new ones there or the second run fails re-applying their migration.
 - `migrations/*.sql` — plain SQL, applied in order by `cmd/migrate`.
 
 ## Domain
@@ -50,7 +51,7 @@ Recurrence in `pkg/schedule/schedule.go` `configs`:
 
 Rooms are labelled `Zimmer N` (`RoomNo`/`ParseRoomNo`). All user-facing text is German; weekday abbreviations `Mo`..`So`. Timezone is always `Europe/Berlin` (`_ "time/tzdata"` is imported for the Vercel runtime).
 
-`/*_plan` commands show `PlanWeeks` (4) weeks ahead. `DB schemas` table: `(duty_type, duty_date, room)` unique on `(duty_type, duty_date)`.
+`/*_plan` commands show `PlanWeeks` (4) weeks ahead. DB: `schedules` `(duty_type, duty_date, room)`, unique on `(duty_type, duty_date)`; `users` `(id, tg_user_id, created_at, updated_at)`, unique on `tg_user_id` — first and last sighting of a Telegram id and nothing else, deliberately unlinked to any room.
 
 Bot commands: `/toilette1`, `/toilette2`, `/treppenhaus` (hall), `/etage` (floor), `/waschkueche` (laundry), each with a `_plan` variant. Plus `/help` (command list, any chat) and `/start` (greeting, private chat only). All defined in `pkg/botcmd` — the `duties` slice there (name + German description + handler) drives the webhook dispatch, `/help`, and `setMyCommands`. After changing it, run `task setcommands` to update the Telegram menu (BotFather is no longer used).
 
