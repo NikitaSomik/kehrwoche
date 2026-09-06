@@ -10,7 +10,6 @@ import (
 
 	_ "time/tzdata"
 
-	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/nikitasomusev/kehrwoche/pkg/botcmd"
 	"github.com/nikitasomusev/kehrwoche/pkg/config"
 	"github.com/nikitasomusev/kehrwoche/pkg/db"
@@ -39,7 +38,7 @@ func Webhook(w http.ResponseWriter, r *http.Request) {
 	// Errors are logged but never returned as HTTP errors to Telegram.
 	w.WriteHeader(http.StatusOK)
 
-	var update tgbotapi.Update
+	var update telegram.Update
 	if err := json.NewDecoder(r.Body).Decode(&update); err != nil {
 		log.Printf("webhook: decode: %v", err)
 		return
@@ -108,7 +107,7 @@ func Webhook(w http.ResponseWriter, r *http.Request) {
 // recordUser stores the sender's Telegram id the first time it is seen.
 // Failures are logged and nothing more: knowing who uses the bot must never
 // cost somebody an answer.
-func recordUser(ctx context.Context, conn users.Execer, msg *tgbotapi.Message) {
+func recordUser(ctx context.Context, conn users.Execer, msg *telegram.Message) {
 	if msg.From == nil {
 		return
 	}
@@ -119,7 +118,7 @@ func recordUser(ctx context.Context, conn users.Execer, msg *tgbotapi.Message) {
 
 // recordSender is recordUser for the paths that hold no connection of their
 // own, so it opens and closes one.
-func recordSender(ctx context.Context, cfg config.Config, msg *tgbotapi.Message) {
+func recordSender(ctx context.Context, cfg config.Config, msg *telegram.Message) {
 	if msg.From == nil {
 		return
 	}

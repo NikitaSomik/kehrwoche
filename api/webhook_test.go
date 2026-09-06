@@ -9,8 +9,9 @@ import (
 	"strings"
 	"testing"
 
-	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+
+	"github.com/nikitasomusev/kehrwoche/pkg/telegram"
 )
 
 // commandUpdateJSON builds a minimal Telegram update JSON body containing a
@@ -110,7 +111,7 @@ func (r *recordingExecer) Exec(ctx context.Context, sql string, args ...any) (pg
 func TestRecordUser(t *testing.T) {
 	t.Run("stores the sender", func(t *testing.T) {
 		e := &recordingExecer{}
-		msg := &tgbotapi.Message{From: &tgbotapi.User{ID: 987654321}}
+		msg := &telegram.Message{From: &telegram.User{ID: 987654321}}
 
 		recordUser(context.Background(), e, msg)
 
@@ -125,7 +126,7 @@ func TestRecordUser(t *testing.T) {
 	t.Run("a message with no sender writes nothing", func(t *testing.T) {
 		e := &recordingExecer{}
 
-		recordUser(context.Background(), e, &tgbotapi.Message{})
+		recordUser(context.Background(), e, &telegram.Message{})
 
 		if e.calls != 0 {
 			t.Errorf("got %d writes, want none", e.calls)
@@ -136,7 +137,7 @@ func TestRecordUser(t *testing.T) {
 	// swallowed rather than surfaced.
 	t.Run("a failed write does not panic", func(t *testing.T) {
 		e := &recordingExecer{err: errors.New("connection reset")}
-		msg := &tgbotapi.Message{From: &tgbotapi.User{ID: 1}}
+		msg := &telegram.Message{From: &telegram.User{ID: 1}}
 
 		recordUser(context.Background(), e, msg)
 	})
