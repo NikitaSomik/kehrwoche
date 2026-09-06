@@ -19,6 +19,7 @@ type asker struct {
 	in          *bufio.Reader
 	out         io.Writer
 	interactive bool
+	st          style
 }
 
 // newAsker reads the terminal, if this is one. Deciding once here means the
@@ -28,6 +29,7 @@ func newAsker() *asker {
 		in:          bufio.NewReader(os.Stdin),
 		out:         os.Stdout,
 		interactive: isTerminal(os.Stdin),
+		st:          newStyle(),
 	}
 }
 
@@ -45,9 +47,9 @@ func (a *asker) line(question, def string) string {
 		return def
 	}
 	if def != "" {
-		fmt.Fprintf(a.out, "%s [%s]: ", question, def)
+		fmt.Fprintf(a.out, "%s %s: ", a.st.question(question), a.st.hint("["+def+"]"))
 	} else {
-		fmt.Fprintf(a.out, "%s: ", question)
+		fmt.Fprintf(a.out, "%s: ", a.st.question(question))
 	}
 	answer, err := a.in.ReadString('\n')
 	if err != nil && answer == "" {
@@ -72,7 +74,7 @@ func (a *asker) intVal(question string, def int) int {
 		if !a.interactive {
 			return def
 		}
-		fmt.Fprintf(a.out, "  %q is not a number\n", answer)
+		fmt.Fprintf(a.out, "  %s\n", a.st.warning(fmt.Sprintf("%q is not a number", answer)))
 	}
 }
 
@@ -85,7 +87,7 @@ func (a *asker) confirm(question string) bool {
 		// hang instead of protecting anything.
 		return true
 	}
-	fmt.Fprintf(a.out, "%s [y/N]: ", question)
+	fmt.Fprintf(a.out, "%s %s: ", a.st.warning(question), a.st.hint("[y/N]"))
 	answer, _ := a.in.ReadString('\n')
 	switch strings.ToLower(strings.TrimSpace(answer)) {
 	case "y", "yes":

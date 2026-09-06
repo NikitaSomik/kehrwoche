@@ -191,13 +191,16 @@ func run(ctx context.Context, a *asker, f cliFlags) error {
 	defer func() { _ = conn.Close(ctx) }()
 
 	return seed(ctx, conn, seedParams{
-		duties:  duties,
-		weeks:   f.weeks,
-		start:   f.start,
-		vacant:  vacant,
-		regen:   f.regen,
-		dry:     f.dry,
-		confirm: func() bool { return a.confirm("Write this to the database in .env?") },
+		duties: duties,
+		weeks:  f.weeks,
+		start:  f.start,
+		vacant: vacant,
+		regen:  f.regen,
+		dry:    f.dry,
+		style:  a.st,
+		confirm: func() bool {
+			return a.confirm("⚠  Write this to the " + a.st.danger("production") + " database in .env?")
+		},
 	})
 }
 
@@ -214,6 +217,7 @@ type seedParams struct {
 	vacant map[int]bool
 	regen  bool
 	dry    bool
+	style  style
 	// confirm is asked once the whole plan has been printed and staged in the
 	// transaction, but before it is committed. nil means don't ask.
 	confirm func() bool
@@ -261,7 +265,13 @@ func seed(ctx context.Context, conn seedConn, p seedParams) error {
 		}
 		for _, r := range rows {
 			room := schedule.RoomNo(r.room)
-			fmt.Printf("%-12s %s  %s\n", duty, r.date.Format(dateLayout), room)
+			// Pad before colouring: %-12s counts the escape bytes as width,
+			// so colouring first would leave the column short by however
+			// long the sequence is.
+			fmt.Printf("%s %s  %s\n",
+				p.style.duty(fmt.Sprintf("%-12s", duty)),
+				r.date.Format(dateLayout),
+				p.style.room(room))
 			if p.dry {
 				continue
 			}
