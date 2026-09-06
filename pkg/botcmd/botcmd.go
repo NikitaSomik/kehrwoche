@@ -84,8 +84,29 @@ func buildHelpMessage() string {
 		}
 		fmt.Fprintf(&b, "/%s — %s\n", c.name, c.desc)
 	}
-	b.WriteString("\nJeden Donnerstag gegen 12 Uhr meldet der Bot hier automatisch, wer dran ist.")
+	fmt.Fprintf(&b, "\nDer Bot meldet sich hier automatisch %s gegen %d Uhr.",
+		reminderDays(), schedule.ReminderHour)
 	return b.String()
+}
+
+// reminderDays renders the announcement weekdays as German prose, e.g.
+// "dienstags, donnerstags und freitags". Built from schedule.ReminderWeekdays
+// so the sentence can't promise a cadence the cron doesn't keep — the previous
+// hard-coded version claimed Thursdays only, and the wrong hour besides.
+func reminderDays() string {
+	days := schedule.ReminderWeekdays()
+	words := make([]string, len(days))
+	for i, d := range days {
+		words[i] = schedule.GermanWeekdayAdverb(d)
+	}
+	switch len(words) {
+	case 0:
+		return ""
+	case 1:
+		return words[0]
+	default:
+		return strings.Join(words[:len(words)-1], ", ") + " und " + words[len(words)-1]
+	}
 }
 
 // The two commands answered from canned text rather than the duties slice.
