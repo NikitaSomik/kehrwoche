@@ -27,7 +27,7 @@ Before committing: `task fmt && task vet && task lint && task test`. `task vuln`
 ## Architecture
 
 - `api/webhook.go` — Vercel function (`func Webhook`), handles Telegram slash commands. Auth: `X-Telegram-Bot-Api-Secret-Token` header, constant-time compare, fail-closed. Always returns 200 (Telegram retries non-200 → duplicate messages); errors are logged only. Also records the sender in `users` (`recordUser` on the dispatch path, which already holds a connection; `recordSender` opens one for `/start`, the only static reply that touches the DB).
-- `api/cron.go` — Vercel function (`func Cron`), sends the scheduled reminder. Auth: `Authorization: Bearer <CRON_SECRET>`. Cron cadence is in `vercel.json` (two entries covering summer/winter local time).
+- `api/cron.go` — Vercel function (`func Cron`), sends the scheduled reminder. Auth: `Authorization: Bearer <CRON_SECRET>`. Cron cadence is in `vercel.json` (two entries covering summer/winter local time). A run that can't do its job reports to `ADMIN_CHAT_ID` privately via `notifyAdmin` — one message per run, skipped when unset, never sent to the group. The webhook deliberately does not: it answers a person who notices the silence, while a failed cron is invisible.
 - `pkg/schedule` — domain logic: duty types, recurrence rules, date math, message formatting. No I/O except `repo.go`.
   - `pkg/schedule/repo.go` — all SQL for the schedule. `Querier` interface is satisfied by a pgx connection; tests use fakes.
 - `pkg/users` — the `users` table, the only SQL outside `pkg/schedule`. `Record` is a single `INSERT ... ON CONFLICT DO NOTHING`; `Execer` is the write half of a pgx connection so tests can fake it.
@@ -66,7 +66,7 @@ Bot commands: `/toilette1`, `/toilette2`, `/treppenhaus` (hall), `/etage` (floor
 
 - `main` → production (Vercel `--prod`), `dev` → preview. Deploy is automatic from CI on push — never run `vercel` locally.
 - On push to `main`, CI also runs `task migrate` against the production DB.
-- Secrets live in `.env` locally and the Vercel dashboard: `TELEGRAM_BOT_TOKEN`, `CHAT_ID`, `DATABASE_URL`, `WEBHOOK_SECRET`, `CRON_SECRET`. Never read, print, or commit `.env`.
+- Secrets live in `.env` locally and the Vercel dashboard: `TELEGRAM_BOT_TOKEN`, `CHAT_ID`, `DATABASE_URL`, `WEBHOOK_SECRET`, `CRON_SECRET`, `ADMIN_CHAT_ID` (optional). Never read, print, or commit `.env`.
 
 ## Conventions
 
