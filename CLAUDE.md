@@ -12,6 +12,7 @@ Always use `task` (CI runs these exact tasks — don't call `go test`/`go vet` d
 | `task test` | `go test ./...` |
 | `task vet` | `go vet ./...` |
 | `task lint` | `golangci-lint run ./...` |
+| `task vuln` | `govulncheck ./...` — known vulnerabilities in dependencies, pinned version |
 | `task fmt` | `gofmt -w .` |
 | `task build` | `go build ./...` |
 | `task tidy` | `go mod tidy` |
@@ -21,7 +22,7 @@ Always use `task` (CI runs these exact tasks — don't call `go test`/`go vet` d
 | `task setcommands` | push the bot command menu to Telegram (`setMyCommands`); `-- -show` prints the current one — **hits the Telegram API, run manually only** |
 | `task test:integration` | integration tests against a throwaway `postgres:17` (needs Docker) |
 
-Before committing: `task fmt && task vet && task lint && task test`.
+Before committing: `task fmt && task vet && task lint && task test`. `task vuln` runs in CI too and fails the build on a reachable vulnerability; it complements Dependabot, which reports new versions rather than reachable holes.
 
 ## Architecture
 
