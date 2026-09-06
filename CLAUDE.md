@@ -21,6 +21,7 @@ Always use `task` (CI runs these exact tasks — don't call `go test`/`go vet` d
 | `task seed -- <flags>` | seed / regenerate the schedule — **writes to the DB in `.env`, run manually only** |
 | `task setcommands` | push the bot command menu to Telegram (`setMyCommands`); `-- -show` prints the current one — **hits the Telegram API, run manually only** |
 | `task test:integration` | integration tests against a throwaway `postgres:17` (needs Docker) |
+| `task smoke:cron` | send a real failure notice to `ADMIN_CHAT_ID` — **hits the Telegram API, run manually only** |
 
 Before committing: `task fmt && task vet && task lint && task test`. `task vuln` runs in CI too and fails the build on a reachable vulnerability; it complements Dependabot, which reports new versions rather than reachable holes.
 
@@ -61,6 +62,7 @@ Bot commands: `/toilette1`, `/toilette2`, `/treppenhaus` (hall), `/etage` (floor
 - `task test` — unit tests, no DB, fast. The SQL layer is faked.
 - `task test:integration` — files tagged `//go:build integration` run against a throwaway `postgres:17` (Docker/OrbStack). Covers the real SQL / pgx paths in `pkg/schedule/repo.go`, `cmd/seed`, `internal/migrate`. Tests `t.Skip` when `TEST_DATABASE_URL` is unset, so a plain `go test ./...` never needs a database.
 - CI runs both in the `test` job (integration on a `postgres:17` service container); that job gates `migrate` and `deploy`.
+- `task smoke:cron` — `//go:build smoke`, outside both. It runs the real `Cron` against a deliberately unroutable `DATABASE_URL`, so the run fails early and only `ADMIN_CHAT_ID` hears about it; the group is never reached. Proves the seam the unit tests can't: real config, real Bot API.
 
 ## Deployment
 
