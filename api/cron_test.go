@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/nikitasomusev/kehrwoche/pkg/config"
+	"github.com/NikitaSomik/kehrwoche/pkg/config"
 
-	"github.com/nikitasomusev/kehrwoche/pkg/schedule"
+	"github.com/NikitaSomik/kehrwoche/pkg/schedule"
 )
 
 func TestDutiesFor(t *testing.T) {

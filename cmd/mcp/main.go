@@ -17,11 +17,11 @@ import (
 
 	_ "time/tzdata"
 
+	"github.com/NikitaSomik/kehrwoche/pkg/config"
+	"github.com/NikitaSomik/kehrwoche/pkg/db"
+	"github.com/NikitaSomik/kehrwoche/pkg/schedule"
 	"github.com/jackc/pgx/v5"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
-	"github.com/nikitasomusev/kehrwoche/pkg/config"
-	"github.com/nikitasomusev/kehrwoche/pkg/db"
-	"github.com/nikitasomusev/kehrwoche/pkg/schedule"
 )
 
 const (

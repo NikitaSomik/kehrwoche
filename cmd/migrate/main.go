@@ -8,9 +8,9 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/nikitasomusev/kehrwoche/internal/migrate"
-	"github.com/nikitasomusev/kehrwoche/pkg/config"
-	"github.com/nikitasomusev/kehrwoche/pkg/db"
+	"github.com/NikitaSomik/kehrwoche/internal/migrate"
+	"github.com/NikitaSomik/kehrwoche/pkg/config"
+	"github.com/NikitaSomik/kehrwoche/pkg/db"
 )
 
 func main() {

@@ -10,11 +10,11 @@ import (
 
 	_ "time/tzdata"
 
-	"github.com/nikitasomusev/kehrwoche/pkg/botcmd"
-	"github.com/nikitasomusev/kehrwoche/pkg/config"
-	"github.com/nikitasomusev/kehrwoche/pkg/db"
-	"github.com/nikitasomusev/kehrwoche/pkg/telegram"
-	"github.com/nikitasomusev/kehrwoche/pkg/users"
+	"github.com/NikitaSomik/kehrwoche/pkg/botcmd"
+	"github.com/NikitaSomik/kehrwoche/pkg/config"
+	"github.com/NikitaSomik/kehrwoche/pkg/db"
+	"github.com/NikitaSomik/kehrwoche/pkg/telegram"
+	"github.com/NikitaSomik/kehrwoche/pkg/users"
 )
 
 func Webhook(w http.ResponseWriter, r *http.Request) {

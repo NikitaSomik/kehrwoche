@@ -1,4 +1,4 @@
-module github.com/nikitasomusev/kehrwoche
+module github.com/NikitaSomik/kehrwoche
 
 go 1.27.1
 

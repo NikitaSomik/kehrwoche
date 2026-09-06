@@ -12,10 +12,10 @@ import (
 
 	_ "time/tzdata"
 
-	"github.com/nikitasomusev/kehrwoche/pkg/config"
-	"github.com/nikitasomusev/kehrwoche/pkg/db"
-	"github.com/nikitasomusev/kehrwoche/pkg/schedule"
-	"github.com/nikitasomusev/kehrwoche/pkg/telegram"
+	"github.com/NikitaSomik/kehrwoche/pkg/config"
+	"github.com/NikitaSomik/kehrwoche/pkg/db"
+	"github.com/NikitaSomik/kehrwoche/pkg/schedule"
+	"github.com/NikitaSomik/kehrwoche/pkg/telegram"
 )
 
 var weeklyDuties = []schedule.DutyType{

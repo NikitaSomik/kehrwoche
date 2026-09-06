@@ -18,9 +18,9 @@ import (
 	"os"
 	"strings"
 
-	"github.com/nikitasomusev/kehrwoche/pkg/botcmd"
-	"github.com/nikitasomusev/kehrwoche/pkg/config"
-	"github.com/nikitasomusev/kehrwoche/pkg/telegram"
+	"github.com/NikitaSomik/kehrwoche/pkg/botcmd"
+	"github.com/NikitaSomik/kehrwoche/pkg/config"
+	"github.com/NikitaSomik/kehrwoche/pkg/telegram"
 )
 
 // menuScopes: "" is the default scope; the rest are the BotCommandScope types
