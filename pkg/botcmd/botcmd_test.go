@@ -180,3 +180,24 @@ func TestMenuValidForTelegram(t *testing.T) {
 	}
 	t.Logf("setMyCommands list:\n%s", list.String())
 }
+
+// The closing line of /help used to promise "Jeden Donnerstag gegen 12 Uhr",
+// while the cron actually announces on three weekdays at 11. It is built from
+// pkg/schedule now, so it moves whenever the cadence does.
+func TestHelpAnnouncesTheRealCadence(t *testing.T) {
+	for _, want := range []string{"dienstags, donnerstags und freitags", "gegen 11 Uhr"} {
+		if !strings.Contains(helpMessage, want) {
+			t.Errorf("helpMessage is missing %q:\n%s", want, helpMessage)
+		}
+	}
+	if strings.Contains(helpMessage, "Jeden Donnerstag") {
+		t.Error("helpMessage still claims the reminder comes only on Thursdays")
+	}
+}
+
+func TestReminderDaysJoinsGermanStyle(t *testing.T) {
+	got := reminderDays()
+	if got != "dienstags, donnerstags und freitags" {
+		t.Errorf("got %q", got)
+	}
+}

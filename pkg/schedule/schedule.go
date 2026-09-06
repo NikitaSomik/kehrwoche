@@ -108,6 +108,48 @@ func (d DutyType) PlanCount() int {
 	return PlanWeeks * len(configs[d].days)
 }
 
+// ReminderHour is the local hour the reminder cron fires at. It mirrors
+// vercel.json, which Go can't read at runtime, so the two are kept in step by
+// hand. The month-based DST split there drifts an hour in the last week of
+// March and of October.
+const ReminderHour = 11
+
+// WeeklyReminderDay is the day the weekly duties are announced on: one day
+// ahead of their shared event day. Wraps mod 7 so it stays correct even if the
+// event day were ever Sunday.
+func WeeklyReminderDay() time.Weekday {
+	return time.Weekday((int(weeklyDays[0]) + 6) % 7)
+}
+
+// ReminderWeekdays lists every weekday the bot announces on, Monday first:
+// the weekly duties are announced the day before their shared event day, and
+// anything on its own cadence (Waschküche) on its event days themselves.
+// Derived from configs so /help and the cron can't tell different stories.
+func ReminderWeekdays() []time.Weekday {
+	seen := make(map[time.Weekday]bool, len(configs))
+	for _, d := range AllDutyTypes() {
+		if slices.Equal(configs[d].days, weeklyDays) {
+			seen[WeeklyReminderDay()] = true
+			continue
+		}
+		for _, w := range configs[d].days {
+			seen[w] = true
+		}
+	}
+
+	week := []time.Weekday{
+		time.Monday, time.Tuesday, time.Wednesday, time.Thursday,
+		time.Friday, time.Saturday, time.Sunday,
+	}
+	out := make([]time.Weekday, 0, len(seen))
+	for _, w := range week {
+		if seen[w] {
+			out = append(out, w)
+		}
+	}
+	return out
+}
+
 // EventWeekdays returns the weekdays d occurs on, so callers (e.g. reminder
 // scheduling) derive them from the same cadence data instead of duplicating
 // the weekdays as separate literals that can drift out of sync.
@@ -198,6 +240,22 @@ var germanWeekdayNames = map[time.Weekday]string{
 
 func germanWeekday(w time.Weekday) string {
 	return germanWeekdayNames[w]
+}
+
+var germanWeekdayAdverbs = map[time.Weekday]string{
+	time.Monday:    "montags",
+	time.Tuesday:   "dienstags",
+	time.Wednesday: "mittwochs",
+	time.Thursday:  "donnerstags",
+	time.Friday:    "freitags",
+	time.Saturday:  "samstags",
+	time.Sunday:    "sonntags",
+}
+
+// GermanWeekdayAdverb returns the German adverb for "every <weekday>", for
+// prose rather than the Mo..So abbreviations used in date listings.
+func GermanWeekdayAdverb(w time.Weekday) string {
+	return germanWeekdayAdverbs[w]
 }
 
 func CleaningWindow(t time.Time) string {

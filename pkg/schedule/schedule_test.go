@@ -180,3 +180,38 @@ func TestCleaningWindow(t *testing.T) {
 		})
 	}
 }
+
+func TestWeeklyReminderDay(t *testing.T) {
+	// The weekly duties fall on Friday, so they are announced on Thursday.
+	if got := WeeklyReminderDay(); got != time.Thursday {
+		t.Errorf("got %s, want Thursday", got)
+	}
+}
+
+func TestReminderWeekdays(t *testing.T) {
+	// Thursday for the weekly duties, Tuesday and Friday for Waschküche,
+	// which is announced on its own event days. Monday-first order.
+	want := []time.Weekday{time.Tuesday, time.Thursday, time.Friday}
+
+	got := ReminderWeekdays()
+	if len(got) != len(want) {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("got %v, want %v", got, want)
+		}
+	}
+}
+
+func TestGermanWeekdayAdverb(t *testing.T) {
+	for w, want := range map[time.Weekday]string{
+		time.Tuesday:  "dienstags",
+		time.Thursday: "donnerstags",
+		time.Sunday:   "sonntags",
+	} {
+		if got := GermanWeekdayAdverb(w); got != want {
+			t.Errorf("%s: got %q, want %q", w, got, want)
+		}
+	}
+}

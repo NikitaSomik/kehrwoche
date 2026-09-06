@@ -23,11 +23,9 @@ var weeklyDuties = []schedule.DutyType{
 	schedule.DutyTypeToilet2, schedule.DutyTypeHall,
 }
 
-// weeklyReminderDay is one day ahead of the weekly duties' shared event day,
-// derived from pkg/schedule so the reminder can't drift out of sync with the
-// cadence it's announcing. Wraps mod 7 so it stays correct even if the event
-// day were ever Sunday.
-var weeklyReminderDay = time.Weekday((int(weeklyDuties[0].EventWeekdays()[0]) + 6) % 7)
+// weeklyReminderDay comes from pkg/schedule so the cron and the /help text
+// that announces it are derived from one place.
+var weeklyReminderDay = schedule.WeeklyReminderDay()
 
 // dutiesFor picks the duties a reminder covers on a weekday: weekly duties
 // the day before their shared event day, laundry on its own event days.

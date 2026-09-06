@@ -71,5 +71,5 @@ Bot commands: `/toilette1`, `/toilette2`, `/treppenhaus` (hall), `/etage` (floor
 
 - Go 1.27, `golangci-lint` v2 (`errcheck`, `govet`, `ineffassign`, `staticcheck`, `unused`, `gosec`).
 - `api/` holds function entrypoints only: every non-test `.go` there must export one `func Name(w http.ResponseWriter, r *http.Request)` — Vercel builds each file as a separate serverless function. Shared logic goes in `pkg/`.
-- Keep new date/cadence logic derived from `configs` — don't duplicate weekday literals (see the `EventWeekdays` comment).
+- Keep new date/cadence logic derived from `configs` — don't duplicate weekday literals (see the `EventWeekdays` comment). `schedule.WeeklyReminderDay` / `ReminderWeekdays` feed both `api/cron.go` and the closing line of `/help`. `schedule.ReminderHour` is the one value that can't be derived: it mirrors `vercel.json` by hand, so change both together.
 - Commit messages: no `Co-Authored-By` trailers.
