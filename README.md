@@ -88,3 +88,27 @@ task seed -- -duty laundry -weeks 12 -regen -start 2026-09-04 -dry
 
 `-regen` deletes rows from `-start` forward and rewrites them, continuing the
 rotation from the last surviving row. Without `-regen` it only appends.
+
+### Treppenhaus
+
+The staircase rotates between the floors of the house. When our turn comes
+round, each occupied room takes one week in order, and once they have all had
+their week the next floor takes over. How many rooms the other floors have is
+not ours to know, so the week our turn comes back cannot be computed — the
+house tells us. `hall` is therefore left out of the default set and seeded one
+block at a time:
+
+```bash
+task seed -- -duty hall -regen -start 2026-11-06 -dry
+```
+
+Two things are decided for you here. The block is exactly as long as there are
+occupied rooms — eight rooms, eight consecutive Fridays — so `-weeks` does not
+apply. And every block starts again at the first occupied room rather than
+carrying on from the last one, so a miscounted block can't leave the rotation
+permanently out of step.
+
+`-regen` is the normal mode for `hall`, not the exceptional one: without it
+`-start` is ignored for a duty that already has rows, and seeding would run
+straight on from the last block into weeks that belong to the other floors.
+Seeding `hall` without it is refused.
