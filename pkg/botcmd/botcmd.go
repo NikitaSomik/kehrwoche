@@ -88,15 +88,22 @@ func buildHelpMessage() string {
 	return b.String()
 }
 
+// The two commands answered from canned text rather than the duties slice.
+// Exported so the webhook can single out /start without repeating the literal.
+const (
+	CmdHelp  = "help"
+	CmdStart = "start"
+)
+
 // StaticReply returns the canned text for /help (any chat) and /start (private
 // chat only — Telegram auto-sends /start when a user first opens the bot). ok
 // is false for anything else, including /start in a group, so those fall
 // through to Lookup (and, if unknown, to a silent return).
 func StaticReply(cmd string, private bool) (string, bool) {
 	switch cmd {
-	case "help":
+	case CmdHelp:
 		return helpMessage, true
-	case "start":
+	case CmdStart:
 		if private {
 			return startMessage, true
 		}

@@ -20,8 +20,9 @@ import (
 	"github.com/nikitasomusev/kehrwoche/internal/migrate"
 )
 
-// Raw returns a connection to a pristine database: the schedules and
-// schema_migrations tables are dropped, nothing is migrated. Use it to test the
+// Raw returns a connection to a pristine database: every application table is
+// dropped, nothing is migrated. Add new tables to the DROP below, or a second
+// run fails re-applying the migration that creates them. Use it to test the
 // migrator itself. Skips the test when TEST_DATABASE_URL is unset; closes the
 // connection on cleanup.
 func Raw(t *testing.T) *pgx.Conn {
@@ -39,7 +40,7 @@ func Raw(t *testing.T) *pgx.Conn {
 	}
 	t.Cleanup(func() { _ = conn.Close(ctx) })
 
-	if _, err := conn.Exec(ctx, `DROP TABLE IF EXISTS schedules, schema_migrations`); err != nil {
+	if _, err := conn.Exec(ctx, `DROP TABLE IF EXISTS schedules, users, schema_migrations`); err != nil {
 		t.Fatalf("pgtest: reset schema: %v", err)
 	}
 	return conn

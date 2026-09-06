@@ -15,6 +15,7 @@ import (
 	"github.com/nikitasomusev/kehrwoche/pkg/config"
 	"github.com/nikitasomusev/kehrwoche/pkg/db"
 	"github.com/nikitasomusev/kehrwoche/pkg/telegram"
+	"github.com/nikitasomusev/kehrwoche/pkg/users"
 )
 
 func Webhook(w http.ResponseWriter, r *http.Request) {
@@ -54,6 +55,13 @@ func Webhook(w http.ResponseWriter, r *http.Request) {
 
 	// /help (any chat) and /start (private only) are static text — no DB needed.
 	if reply, ok := botcmd.StaticReply(cmd, update.Message.Chat.IsPrivate()); ok {
+		// /start is someone opening the bot in private for the first time, and
+		// often the only sighting of a resident who reads the group chat but
+		// never types a command in it. Worth the one connection this path
+		// otherwise avoids; /help stays free of the database.
+		if cmd == botcmd.CmdStart {
+			recordSender(ctx, cfg, update.Message)
+		}
 		if err := telegram.SendPlain(ctx, http.DefaultClient, cfg.TelegramToken, update.Message.Chat.ID, reply); err != nil {
 			log.Printf("webhook: send static: %v", err)
 		}
@@ -76,6 +84,10 @@ func Webhook(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
+	// The connection is open either way, so recording the sender costs nothing
+	// beyond the statement itself.
+	recordUser(ctx, conn, update.Message)
+
 	loc, err := time.LoadLocation("Europe/Berlin")
 	if err != nil {
 		log.Printf("webhook: load location: %v", err)
@@ -91,4 +103,35 @@ func Webhook(w http.ResponseWriter, r *http.Request) {
 	if err := telegram.Send(ctx, http.DefaultClient, cfg.TelegramToken, update.Message.Chat.ID, text); err != nil {
 		log.Printf("webhook: send: %v", err)
 	}
+}
+
+// recordUser stores the sender's Telegram id the first time it is seen.
+// Failures are logged and nothing more: knowing who uses the bot must never
+// cost somebody an answer.
+func recordUser(ctx context.Context, conn users.Execer, msg *tgbotapi.Message) {
+	if msg.From == nil {
+		return
+	}
+	if err := users.Record(ctx, conn, msg.From.ID); err != nil {
+		log.Printf("webhook: record user: %v", err)
+	}
+}
+
+// recordSender is recordUser for the paths that hold no connection of their
+// own, so it opens and closes one.
+func recordSender(ctx context.Context, cfg config.Config, msg *tgbotapi.Message) {
+	if msg.From == nil {
+		return
+	}
+	conn, err := db.Connect(ctx, cfg.DatabaseURL)
+	if err != nil {
+		log.Printf("webhook: record user: db connect: %v", err)
+		return
+	}
+	defer func() {
+		if err := conn.Close(ctx); err != nil {
+			log.Printf("webhook: record user: db close: %v", err)
+		}
+	}()
+	recordUser(ctx, conn, msg)
 }

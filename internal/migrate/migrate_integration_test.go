@@ -6,6 +6,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"github.com/jackc/pgx/v5"
@@ -25,28 +26,51 @@ func tableExists(t *testing.T, conn *pgx.Conn, name string) bool {
 	return n == 1
 }
 
+// migrationNames is whatever migrations/ actually holds, so adding one doesn't
+// break this test.
+func migrationNames(t *testing.T) []string {
+	t.Helper()
+	paths, err := filepath.Glob(filepath.Join(pgtest.MigrationsDir(t), "*.sql"))
+	if err != nil {
+		t.Fatalf("list migrations: %v", err)
+	}
+	if len(paths) == 0 {
+		t.Fatal("no migrations found")
+	}
+	slices.Sort(paths)
+	names := make([]string, len(paths))
+	for i, path := range paths {
+		names[i] = filepath.Base(path)
+	}
+	return names
+}
+
 func TestApply_FreshDatabase(t *testing.T) {
 	conn := pgtest.Raw(t)
 	ctx := context.Background()
+
+	want := migrationNames(t)
 
 	applied, err := migrate.Apply(ctx, conn, pgtest.MigrationsDir(t))
 	if err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
-	if len(applied) != 1 || applied[0] != "0001_init.sql" {
-		t.Fatalf("applied = %v, want [0001_init.sql]", applied)
+	if !slices.Equal(applied, want) {
+		t.Fatalf("applied = %v, want %v", applied, want)
 	}
 
-	if !tableExists(t, conn, "schedules") {
-		t.Error("schedules table was not created")
+	for _, table := range []string{"schedules", "users"} {
+		if !tableExists(t, conn, table) {
+			t.Errorf("%s table was not created", table)
+		}
 	}
 
 	var n int
 	if err := conn.QueryRow(ctx, `SELECT count(*) FROM schema_migrations`).Scan(&n); err != nil {
 		t.Fatalf("count schema_migrations: %v", err)
 	}
-	if n != 1 {
-		t.Errorf("schema_migrations has %d rows, want 1", n)
+	if n != len(want) {
+		t.Errorf("schema_migrations has %d rows, want %d", n, len(want))
 	}
 }
 
