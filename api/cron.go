@@ -119,6 +119,15 @@ func Cron(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Once a week rather than on every run, and privately: only whoever runs
+	// cmd/seed can act on it, so the group chat would just be noise. A failure
+	// here is logged, never allowed to fail the reminder itself.
+	if now.Weekday() == weeklyReminderDay {
+		if err := warnHorizon(ctx, conn, cfg, now); err != nil {
+			log.Printf("cron: horizon: %v", err)
+		}
+	}
+
 	if len(problems) > 0 {
 		notifyAdmin(ctx, cfg, problems...)
 		http.Error(w, "partial failure", http.StatusInternalServerError)
@@ -169,4 +178,27 @@ func adminNotice(problems []string) string {
 		fmt.Fprintf(&b, "\n• %s", p)
 	}
 	return b.String()
+}
+
+// warnHorizon messages the admin when a rolling-horizon duty is about to run
+// out of planned weeks. With ADMIN_CHAT_ID unset it does nothing: the notice
+// is a maintenance chore, and pushing it to the group instead would tell seven
+// people about work only one of them can do.
+func warnHorizon(ctx context.Context, conn schedule.Querier, cfg config.Config, now time.Time) error {
+	if cfg.AdminChatID == "" {
+		return nil
+	}
+	gaps, err := schedule.HorizonGaps(ctx, conn, schedule.HorizonDuties(), now)
+	if err != nil {
+		return err
+	}
+	text := schedule.FormatHorizonWarning(gaps)
+	if text == "" {
+		return nil
+	}
+	adminID, err := strconv.ParseInt(cfg.AdminChatID, 10, 64)
+	if err != nil {
+		return fmt.Errorf("invalid ADMIN_CHAT_ID: %w", err)
+	}
+	return sendAdmin(ctx, http.DefaultClient, cfg.TelegramToken, adminID, text)
 }
