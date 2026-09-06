@@ -30,6 +30,13 @@ tasks:
       # run. Bump this deliberately.
       - go run golang.org/x/vuln/cmd/govulncheck@v1.7.0 ./...
 
+  smoke:cron:
+    desc: Send a real failure notice to ADMIN_CHAT_ID — hits the Telegram API, run manually only
+    cmds:
+      # Forces a database-connection failure, so the run stops long before the
+      # group chat could be reached. Only ADMIN_CHAT_ID hears about it.
+      - go test -tags=smoke -count=1 -v -run TestCronNotifiesAdminOnFailure ./api/
+
   fmt:
     desc: Format Go source files
     cmds:
