@@ -68,6 +68,7 @@ Bot commands: `/toilette1`, `/toilette2`, `/treppenhaus` (hall), `/etage` (floor
 
 - `main` → production (Vercel `--prod`), `dev` → preview. Deploy is automatic from CI on push — never run `vercel` locally.
 - On push to `main`, CI also runs `task migrate` against the production DB.
+- CI scans the git history with gitleaks (`.gitleaks.toml`, own job, doesn't gate deploy — a committed secret has to be rotated, not un-deployed). README has the rotation runbook.
 - Secrets live in `.env` locally and the Vercel dashboard: `TELEGRAM_BOT_TOKEN`, `CHAT_ID`, `DATABASE_URL`, `WEBHOOK_SECRET`, `CRON_SECRET`, `ADMIN_CHAT_ID` (optional). Never read, print, or commit `.env`.
 
 ## Conventions

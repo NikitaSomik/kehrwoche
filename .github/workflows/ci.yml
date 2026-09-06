@@ -56,6 +56,26 @@ jobs:
         env:
           TEST_DATABASE_URL: postgres://postgres:test@localhost:5432/kehrwoche?sslmode=disable
 
+  secrets:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # The action reports what it finds on the pull request itself.
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # gitleaks reads history, not just the checkout.
+          fetch-depth: 0
+
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          # Required since the action's v2 update: without it a pull_request
+          # run stops before scanning anything.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_CONFIG: .gitleaks.toml
+
   migrate:
     name: Migrate
     runs-on: ubuntu-latest

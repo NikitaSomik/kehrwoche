@@ -1,0 +1,24 @@
+# Extends the default ruleset, which already knows Telegram bot tokens
+# (telegram-bot-api-token). What it has no rule for is the other secret this
+# project holds: a Postgres URL with the password inline, which is exactly the
+# shape DATABASE_URL takes.
+[extend]
+useDefault = true
+
+[[rules]]
+id = "connection-string-password"
+description = "Connection string carrying an inline password"
+# Reaches past the @ to the host on purpose: the allowlist below has to be able
+# to tell a throwaway local database from a real one, and it is matched against
+# what this regex captured, not against the whole line.
+regex = '''(?i)postgres(?:ql)?://[^\s/:@]+:[^\s/:@]+@[^\s/"']+'''
+
+  [rules.allowlist]
+  description = "Placeholders and throwaway databases, not credentials"
+  # Listed by value rather than by file, so a real credential added to one of
+  # those same files is still caught.
+  regexes = [
+    '''postgres://user:password@host''',
+    '''postgres://postgres:test@(localhost|127\.0\.0\.1)''',
+    '''postgres://user:pass@127\.0\.0\.1:1''',
+  ]
