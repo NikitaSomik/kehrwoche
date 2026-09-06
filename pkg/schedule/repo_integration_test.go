@@ -9,8 +9,8 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"github.com/nikitasomusev/kehrwoche/internal/pgtest"
-	"github.com/nikitasomusev/kehrwoche/pkg/schedule"
+	"github.com/NikitaSomik/kehrwoche/internal/pgtest"
+	"github.com/NikitaSomik/kehrwoche/pkg/schedule"
 )
 
 func day(t *testing.T, s string) time.Time {

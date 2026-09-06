@@ -14,8 +14,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/nikitasomusev/kehrwoche/pkg/schedule"
-	"github.com/nikitasomusev/kehrwoche/pkg/telegram"
+	"github.com/NikitaSomik/kehrwoche/pkg/schedule"
+	"github.com/NikitaSomik/kehrwoche/pkg/telegram"
 )
 
 // Handler answers one command, given a DB accessor and the current time.

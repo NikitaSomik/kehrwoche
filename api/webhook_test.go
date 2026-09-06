@@ -11,7 +11,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgconn"
 
-	"github.com/nikitasomusev/kehrwoche/pkg/telegram"
+	"github.com/NikitaSomik/kehrwoche/pkg/telegram"
 )
 
 // commandUpdateJSON builds a minimal Telegram update JSON body containing a

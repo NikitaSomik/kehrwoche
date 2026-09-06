@@ -11,8 +11,8 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"github.com/nikitasomusev/kehrwoche/internal/migrate"
-	"github.com/nikitasomusev/kehrwoche/internal/pgtest"
+	"github.com/NikitaSomik/kehrwoche/internal/migrate"
+	"github.com/NikitaSomik/kehrwoche/internal/pgtest"
 )
 
 func tableExists(t *testing.T, conn *pgx.Conn, name string) bool {

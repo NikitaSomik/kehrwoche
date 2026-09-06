@@ -17,7 +17,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"github.com/nikitasomusev/kehrwoche/internal/migrate"
+	"github.com/NikitaSomik/kehrwoche/internal/migrate"
 )
 
 // Raw returns a connection to a pristine database: every application table is

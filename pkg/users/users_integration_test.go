@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/nikitasomusev/kehrwoche/internal/pgtest"
-	"github.com/nikitasomusev/kehrwoche/pkg/users"
+	"github.com/NikitaSomik/kehrwoche/internal/pgtest"
+	"github.com/NikitaSomik/kehrwoche/pkg/users"
 )
 
 // The point of the table: a person is written once however often they use the
