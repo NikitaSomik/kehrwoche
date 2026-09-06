@@ -21,6 +21,11 @@ cp .env.example .env   # fill in the values
 | `CHAT_ID` | group chat the weekly reminder is sent to |
 | `DATABASE_URL` | Postgres connection string (use Neon's pooler endpoint) |
 | `WEBHOOK_SECRET` | secret Telegram must send with every webhook call |
+
+The webhook answers only the `CHAT_ID` group and private chats whose sender is
+a member of it, so a stranger who finds the bot by name gets nothing. Residents
+keep their private chats without anyone collecting their user ids: membership is
+asked of Telegram per message and follows the group as people move in and out.
 | `CRON_SECRET` | bearer token Vercel Cron must send |
 
 Set the same variables in the Vercel project dashboard for deployment.

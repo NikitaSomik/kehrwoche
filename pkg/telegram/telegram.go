@@ -71,6 +71,38 @@ func GetCommands(ctx context.Context, client *http.Client, token, scope string) 
 	return out.Result, nil
 }
 
+// Membership statuses getChatMember can report. The first four mean the user
+// is inside the chat; "left" and "kicked" mean they are not.
+const (
+	StatusCreator       = "creator"
+	StatusAdministrator = "administrator"
+	StatusMember        = "member"
+	StatusRestricted    = "restricted"
+)
+
+// GetChatMember returns userID's membership status in chatID (getChatMember).
+// Telegram answers with an error rather than a status for a user it has never
+// seen in the chat, so callers must treat a failure as "not a member" instead
+// of retrying.
+func GetChatMember(ctx context.Context, client *http.Client, token string, chatID, userID int64) (string, error) {
+	raw, err := call(ctx, client, token, "getChatMember", map[string]any{
+		"chat_id": chatID,
+		"user_id": userID,
+	})
+	if err != nil {
+		return "", err
+	}
+	var out struct {
+		Result struct {
+			Status string `json:"status"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return "", fmt.Errorf("telegram: decode getChatMember: %w", err)
+	}
+	return out.Result.Status, nil
+}
+
 // call POSTs a JSON payload to a Bot API method and returns the raw response
 // body. Errors never include the bot token.
 func call(ctx context.Context, client *http.Client, token, method string, payload any) ([]byte, error) {

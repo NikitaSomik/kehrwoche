@@ -25,11 +25,11 @@ Before committing: `task fmt && task vet && task lint && task test`.
 
 ## Architecture
 
-- `api/webhook.go` — Vercel function (`func Webhook`), handles Telegram slash commands. Auth: `X-Telegram-Bot-Api-Secret-Token` header, constant-time compare, fail-closed. Always returns 200 (Telegram retries non-200 → duplicate messages); errors are logged only.
+- `api/webhook.go` — Vercel function (`func Webhook`), handles Telegram slash commands. Auth is two layers, both fail-closed: the `X-Telegram-Bot-Api-Secret-Token` header (constant-time compare) proves the update came from Telegram, then `allowedChat` proves it came from the flat — the group must be `CHAT_ID`, a private chat must have a sender who is a member of it (`telegram.GetChatMember`, stubbed in tests via the `memberCheck` var). Body capped at `maxUpdateBytes`. Always returns 200 (Telegram retries non-200 → duplicate messages); errors are logged only.
 - `api/cron.go` — Vercel function (`func Cron`), sends the scheduled reminder. Auth: `Authorization: Bearer <CRON_SECRET>`. Cron cadence is in `vercel.json` (two entries covering summer/winter local time).
 - `pkg/schedule` — domain logic: duty types, recurrence rules, date math, message formatting. No I/O except `repo.go`.
   - `pkg/schedule/repo.go` — the only place with SQL. `Querier` interface is satisfied by a pgx connection; tests use fakes.
-- `pkg/telegram` — the only outbound HTTP: `Send` / `SendPlain` (messages) and `SetCommands` / `GetCommands` (the command menu), all over one `call` helper that keeps the bot token out of errors.
+- `pkg/telegram` — the only outbound HTTP: `Send` / `SendPlain` (messages), `SetCommands` / `GetCommands` (the command menu) and `GetChatMember` (membership, for the webhook allowlist), all over one `call` helper that keeps the bot token out of errors.
 - `pkg/botcmd` — the bot's slash commands. The `duties` slice (name + German description + handler) is the single source of truth; `Lookup` (webhook dispatch), `Menu` (`setMyCommands` payload), `StaticReply` (`/help` any chat, `/start` private only). `wer`/`plan` handlers live here. Kept out of `api/` because Vercel builds every `api/*.go` as its own function.
 - `pkg/db` — `db.Connect`.
 - `pkg/config` — `config.Load()` reads every env var once into `Config`. Add new env vars here, not scattered `os.Getenv`.
