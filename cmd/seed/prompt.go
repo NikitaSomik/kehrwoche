@@ -301,7 +301,11 @@ type choice struct {
 	exclusive bool
 }
 
-const listHint = "↑↓ move · space toggle · enter confirm"
+// listHint names every key the list answers to, including the one nothing
+// else would reveal. It is kept short on purpose: the hint is the first
+// thing fitPair gives up, so a longer one would document the "a" key only
+// on a wide terminal.
+const listHint = "↑↓ · space · a all · enter"
 
 // multiselect asks which of opts apply, with on carrying both the initial
 // selection and the answer. It navigates with the arrow keys where it can and
@@ -438,7 +442,7 @@ func (a *asker) typeKeys(question string, opts []choice, on []bool) ([]bool, err
 		if part == "" {
 			continue
 		}
-		i := indexOf(keys, part)
+		i := slices.Index(keys, part)
 		if i < 0 {
 			return nil, fmt.Errorf("%q is not one of: %s", part, strings.Join(keys, ", "))
 		}
@@ -488,15 +492,6 @@ func selectAll(opts []choice, on []bool) {
 	for i, o := range opts {
 		on[i] = !full && !o.exclusive
 	}
-}
-
-func indexOf(list []string, want string) int {
-	for i, v := range list {
-		if v == want {
-			return i
-		}
-	}
-	return -1
 }
 
 // stop closes the frame for an answer that ended the run. Ctrl+C is a decision,
