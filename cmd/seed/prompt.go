@@ -66,7 +66,7 @@ func (a *asker) intro(title string) {
 	if !a.interactive {
 		return
 	}
-	a.printf("%s  %s\n%s\n", a.st.done(symIntro), a.st.current(title), a.st.rail(symBar))
+	a.printf("%s  %s\n%s\n", a.st.success(symIntro), a.st.strong(title), a.st.muted(symBar))
 }
 
 // outro closes it.
@@ -77,7 +77,7 @@ func (a *asker) outro(msg string) {
 	}
 	// No leading rail here: every block that can precede this one — an
 	// answer, the totals, the confirmation — already ends with it.
-	a.printf("%s  %s\n", a.st.done(symOutro), msg)
+	a.printf("%s  %s\n", a.st.success(symOutro), msg)
 }
 
 // cancelled closes it on the unhappy path, in a colour that says so.
@@ -92,9 +92,9 @@ func (a *asker) cancelled(msg string) {
 // step draws the header of a question: the symbol, the label, and a dimmed
 // hint beside it.
 func (a *asker) step(sym, question, hint string) {
-	a.printf("%s  %s", sym, a.st.current(question))
+	a.printf("%s  %s", sym, a.st.strong(question))
 	if hint != "" {
-		a.printf("  %s", a.st.rail(hint))
+		a.printf("  %s", a.st.muted(hint))
 	}
 	a.printf("\n")
 }
@@ -173,11 +173,11 @@ func (a *asker) rewind(n int) {
 // the line, because there is no cursor to move.
 func (a *asker) answered(question, answer string, drawn int) {
 	a.rewind(drawn)
-	a.step(a.st.done(symDone), question, "")
+	a.step(a.st.success(symDone), question, "")
 	if answer == "" {
 		answer = "—"
 	}
-	a.printf("%s  %s\n%s\n", a.st.rail(symBar), a.st.value(answer), a.st.rail(symBar))
+	a.printf("%s  %s\n%s\n", a.st.muted(symBar), a.st.accent(answer), a.st.muted(symBar))
 }
 
 // --- text ------------------------------------------------------------------
@@ -193,8 +193,8 @@ func (a *asker) line(question, def string) string {
 		hint = "(" + def + ")"
 	}
 	question, hint = fitPair(question, hint, a.budget(stepPrefix))
-	a.step(a.st.active(symActive), question, hint)
-	a.printf("%s  %s ", a.st.rail(symBar), a.st.rail(markHere))
+	a.step(a.st.accent(symActive), question, hint)
+	a.printf("%s  %s ", a.st.muted(symBar), a.st.muted(markHere))
 
 	answer, err := a.in.ReadString('\n')
 	if err != nil && answer == "" {
@@ -227,7 +227,7 @@ func (a *asker) intVal(question string, def int) int {
 		a.printf("%s  %s\n%s\n",
 			a.st.warning(symWarn),
 			a.st.warning(fmt.Sprintf("%q is not a number", answer)),
-			a.st.rail(symBar))
+			a.st.muted(symBar))
 	}
 }
 
@@ -255,7 +255,7 @@ func (a *asker) confirm(question string) bool {
 		return true
 	}
 	a.step(a.st.warning(symWarn), a.st.warning(question), "")
-	a.printf("%s  %s %s ", a.st.rail(symBar), a.st.rail("[y/N]"), a.st.rail(markHere))
+	a.printf("%s  %s %s ", a.st.muted(symBar), a.st.muted("[y/N]"), a.st.muted(markHere))
 
 	answer, _ := a.in.ReadString('\n')
 	yes := false
@@ -263,7 +263,7 @@ func (a *asker) confirm(question string) bool {
 	case "y", "yes":
 		yes = true
 	}
-	a.printf("%s\n", a.st.rail(symBar))
+	a.printf("%s\n", a.st.muted(symBar))
 	return yes
 }
 
@@ -278,11 +278,16 @@ func (a *asker) confirm(question string) bool {
 type crlfWriter struct{ w io.Writer }
 
 func (c crlfWriter) Write(p []byte) (int, error) {
-	if _, err := c.w.Write(bytes.ReplaceAll(p, []byte("\n"), []byte("\r\n"))); err != nil {
+	out := bytes.ReplaceAll(p, []byte("\n"), []byte("\r\n"))
+	n, err := c.w.Write(out)
+	if err != nil {
 		return 0, err
 	}
-	// Report the caller's own length: the translation is none of its business,
-	// and a short write would look like an error to it.
+	if n < len(out) {
+		return 0, io.ErrShortWrite
+	}
+	// Report the caller's own length, not the translated one: the translation
+	// is none of its business, and a longer count reads as a bug upstream.
 	return len(p), nil
 }
 
@@ -322,7 +327,7 @@ func (a *asker) multiselect(question string, opts []choice, on []bool) ([]bool, 
 		return on, nil
 	}
 	if a.tty != nil && a.redraw {
-		restore, err := rawMode(a.tty)
+		restore, err := enterRawMode(a.tty)
 		if err == nil {
 			defer restore()
 			// Raw mode turns the terminal's own newline translation off, so
@@ -336,6 +341,12 @@ func (a *asker) multiselect(question string, opts []choice, on []bool) ([]bool, 
 	}
 	return a.typeKeys(question, opts, on)
 }
+
+// enterRawMode is rawMode behind a variable, so a test can drive the branch
+// that owns the terminal without owning one. Everything that branch does
+// afterwards — the CRLF translation, the repaints, the rewinds — is ordinary
+// code, and this is the only thing standing between it and a test.
+var enterRawMode = rawMode
 
 // navigate is the interactive half of multiselect: it owns the terminal, so it
 // can repaint the list under the cursor on every key press.
@@ -364,7 +375,10 @@ func (a *asker) navigate(question string, opts []choice, on []bool) ([]bool, err
 		case keySpace:
 			toggle(opts, on, cur)
 		case keyRune:
-			if k.r == 'a' || k.r == 'A' {
+			// Lower case only. The tail of an escape sequence that arrived in
+			// pieces reaches here as 'A', and selecting everything is not what
+			// somebody pressing the up arrow meant.
+			if k.r == 'a' {
 				selectAll(opts, on)
 			}
 		}
@@ -381,7 +395,7 @@ func (a *asker) navigate(question string, opts []choice, on []bool) ([]bool, err
 // terminal displays — see asker.width.
 func (a *asker) paintList(question string, opts []choice, on []bool, cur int) int {
 	q, h := fitPair(question, listHint, a.budget(stepPrefix))
-	a.step(a.st.active(symActive), q, h)
+	a.step(a.st.accent(symActive), q, h)
 
 	width := 0
 	for _, o := range opts {
@@ -397,7 +411,7 @@ func (a *asker) paintList(question string, opts []choice, on []bool, cur int) in
 			mark = markOn
 		}
 		if i == cur {
-			here = a.st.value(markHere) + " "
+			here = a.st.accent(markHere) + " "
 		}
 
 		// Only a row with something to its right needs padding, and it is
@@ -410,13 +424,13 @@ func (a *asker) paintList(question string, opts []choice, on []bool, cur int) in
 		label, hint := fitPair(label, o.hint, budget)
 
 		if on[i] {
-			label = a.st.done(label)
+			label = a.st.success(label)
 		} else if i == cur {
-			label = a.st.current(label)
+			label = a.st.strong(label)
 		}
-		a.printf("%s  %s%s %s", a.st.rail(symBar), here, mark, label)
+		a.printf("%s  %s%s %s", a.st.muted(symBar), here, mark, label)
 		if hint != "" {
-			a.printf("  %s", a.st.rail(hint))
+			a.printf("  %s", a.st.muted(hint))
 		}
 		a.printf("\n")
 	}

@@ -43,16 +43,17 @@ func (s style) wrap(code, text string) string {
 	return code + text + ansiReset
 }
 
-// The question itself, so it stands out from the answer typed after it.
-func (s style) question(text string) string { return s.wrap(ansiBold, text) }
+// The palette, named by the part each colour plays rather than by where it
+// happens to be used. One name per role: the frame and the plan used to carry
+// separate vocabularies for the same six codes, so "bold" was defined twice
+// and changing it meant finding both.
+func (s style) strong(text string) string  { return s.wrap(ansiBold, text) }
+func (s style) muted(text string) string   { return s.wrap(ansiDim, text) }
+func (s style) accent(text string) string  { return s.wrap(ansiCyan, text) }
+func (s style) success(text string) string { return s.wrap(ansiGreen, text) }
 
-// Defaults and hints — present, but not competing with the question.
-func (s style) hint(text string) string { return s.wrap(ansiDim, text) }
-
-func (s style) duty(text string) string { return s.wrap(ansiCyan, text) }
-func (s style) room(text string) string { return s.wrap(ansiGreen, text) }
-
-// warning is for the one line where a wrong answer costs something.
+// warning is for the one line where a wrong answer costs something; danger for
+// the word in it that says why.
 func (s style) warning(text string) string { return s.wrap(ansiWarn, text) }
 func (s style) danger(text string) string  { return s.wrap(ansiRed, text) }
 
@@ -86,17 +87,3 @@ func ansiUp(n int) string {
 	}
 	return "\033[" + strconv.Itoa(n) + "A"
 }
-
-// The rail and the hints beside it: present, but never competing with the
-// question or the answer.
-func (s style) rail(text string) string { return s.hint(text) }
-
-// active is the question on screen right now, done is one already answered.
-func (s style) active(text string) string { return s.wrap(ansiCyan, text) }
-func (s style) done(text string) string   { return s.wrap(ansiGreen, text) }
-
-// value is an answer echoed back.
-func (s style) value(text string) string { return s.wrap(ansiCyan, text) }
-
-// current is the row the cursor is on.
-func (s style) current(text string) string { return s.wrap(ansiBold, text) }

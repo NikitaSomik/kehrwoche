@@ -408,7 +408,7 @@ func seed(ctx context.Context, conn seedConn, p seedParams) error {
 	for _, duty := range p.duties {
 		active := activeRooms(rotations[duty], p.vacant)
 		if len(active) == 0 {
-			fmt.Fprintf(w, "%s  %s  %s\n", st.rail(symBar), duty.Label(), st.warning("no occupied rooms, skipped"))
+			fmt.Fprintf(w, "%s  %s  %s\n", st.muted(symBar), duty.Label(), st.warning("no occupied rooms, skipped"))
 			continue
 		}
 		block := isBlock(duty)
@@ -438,13 +438,13 @@ func seed(ctx context.Context, conn seedConn, p seedParams) error {
 			continue
 		}
 
-		fmt.Fprintf(w, "%s  %s  %s\n", st.done(symBranch), st.current(duty.Label()), st.rail(fmt.Sprintf("%d rows", len(rows))))
+		fmt.Fprintf(w, "%s  %s  %s\n", st.success(symBranch), st.strong(duty.Label()), st.muted(fmt.Sprintf("%d rows", len(rows))))
 		if note != "" {
-			fmt.Fprintf(w, "%s  %s\n", st.rail(symBar), st.rail(note))
+			fmt.Fprintf(w, "%s  %s\n", st.muted(symBar), st.muted(note))
 		}
 		for _, r := range rows {
 			room := schedule.RoomNo(r.room)
-			fmt.Fprintf(w, "%s  %s  %s\n", st.rail(symBar), r.date.Format(dateLayout), st.room(room))
+			fmt.Fprintf(w, "%s  %s  %s\n", st.muted(symBar), r.date.Format(dateLayout), st.success(room))
 			if p.dry {
 				continue
 			}
@@ -455,7 +455,7 @@ func seed(ctx context.Context, conn seedConn, p seedParams) error {
 				return fmt.Errorf("insert %s %s: %w", duty, r.date.Format(dateLayout), err)
 			}
 		}
-		fmt.Fprintf(w, "%s\n", st.rail(symBar))
+		fmt.Fprintf(w, "%s\n", st.muted(symBar))
 		totals = append(totals, dutyTotal{
 			duty: duty,
 			rows: len(rows),
@@ -579,13 +579,13 @@ func printDeletions(w io.Writer, st style, dels []deletion) {
 		st.warning(fmt.Sprintf("-regen deletes %d existing rows first", total)))
 	for _, d := range real {
 		fmt.Fprintf(w, "%s  %s  %4d  %s … %s\n",
-			st.rail(symBar),
-			st.duty(fmt.Sprintf("%-*s", width, d.duty.Label())),
+			st.muted(symBar),
+			st.accent(fmt.Sprintf("%-*s", width, d.duty.Label())),
 			d.rows,
 			d.from.Format(dateLayout),
 			d.to.Format(dateLayout))
 	}
-	fmt.Fprintf(w, "%s\n", st.rail(symBar))
+	fmt.Fprintf(w, "%s\n", st.muted(symBar))
 }
 
 // dutyTotal is one line of the summary: what a duty got, and the span it
@@ -608,24 +608,24 @@ func printTotals(w io.Writer, st style, totals []dutyTotal) {
 		}
 	}
 
-	fmt.Fprintf(w, "%s  %s\n", st.done(symBranch), st.current("plan"))
+	fmt.Fprintf(w, "%s  %s\n", st.success(symBranch), st.strong("plan"))
 	sum := 0
 	for _, t := range totals {
 		sum += t.rows
 		// Pad before colouring: %-*s counts the escape bytes as width, so
 		// colouring first would leave the column short by the sequence.
 		fmt.Fprintf(w, "%s  %s  %4d  %s → %s\n",
-			st.rail(symBar),
-			st.duty(fmt.Sprintf("%-*s", width, t.duty.Label())),
+			st.muted(symBar),
+			st.accent(fmt.Sprintf("%-*s", width, t.duty.Label())),
 			t.rows,
 			t.from.Format(dateLayout),
 			t.to.Format(dateLayout))
 	}
 	fmt.Fprintf(w, "%s  %s  %4d\n%s\n",
-		st.rail(symBar),
-		st.rail(fmt.Sprintf("%-*s", width, "total")),
+		st.muted(symBar),
+		st.muted(fmt.Sprintf("%-*s", width, "total")),
 		sum,
-		st.rail(symBar))
+		st.muted(symBar))
 }
 
 type plannedRow struct {

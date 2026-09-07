@@ -11,9 +11,9 @@ import (
 	"golang.org/x/term"
 )
 
-// errCancelled is what a prompt returns when the answer was Ctrl+C or Esc
-// rather than a choice. It travels up to run, which reports the cancellation
-// and leaves the database alone.
+// errCancelled is what a prompt returns when the answer was Ctrl+C rather than
+// a choice. It travels up to run, which reports the cancellation and leaves
+// the database alone.
 var errCancelled = errors.New("cancelled")
 
 // A key press, decoded far enough for a list to react to it. Anything the
@@ -36,10 +36,15 @@ type key struct {
 	r    rune
 }
 
-// readKey decodes one key press. Arrow keys arrive as an escape sequence
-// (ESC [ A), so a lone ESC can only be told apart from the start of one by
-// whether more bytes are already waiting — a terminal delivers a sequence in
-// a single read, a person pressing Esc delivers nothing after it.
+// readKey decodes one key press.
+//
+// Arrow keys arrive as an escape sequence (ESC [ A), and a lone ESC can only
+// be told apart from the start of one by whether more bytes are already
+// waiting. That test is not sound: a terminal usually delivers a sequence in
+// one read, but over ssh or a busy pty the three bytes can arrive separately.
+// So ESC is not given a meaning at all. A sequence that arrives in pieces then
+// costs a key press nobody notices, where treating a lone ESC as cancel would
+// have ended the run instead.
 func readKey(in *bufio.Reader) (key, error) {
 	b, err := in.ReadByte()
 	if err != nil {
@@ -59,12 +64,16 @@ func readKey(in *bufio.Reader) (key, error) {
 		return key{kind: keyDown}, nil
 	case 27: // ESC
 		if in.Buffered() == 0 {
-			return key{kind: keyInterrupt}, nil
-		}
-		if c, err := in.ReadByte(); err != nil || c != '[' {
 			return key{kind: keyOther}, nil
 		}
 		c, err := in.ReadByte()
+		if err != nil {
+			return key{}, err
+		}
+		if c != '[' {
+			return key{kind: keyOther}, nil
+		}
+		c, err = in.ReadByte()
 		if err != nil {
 			return key{}, err
 		}

@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"errors"
+	"io"
 	"os"
 	"strings"
 	"testing"
@@ -628,4 +629,49 @@ func TestMultiselectLeavesTheCallersSliceAlone(t *testing.T) {
 			t.Error("the default selection was lost")
 		}
 	})
+}
+
+// The branch that owns the terminal was verified by hand and by nothing else,
+// which is how the missing carriage return got in: raw mode switches off the
+// driver's own \n → \r\n translation, and a list drawn with bare newlines
+// walks off the right of the screen a step at a time.
+func TestMultiselectRawPathReturnsTheCarriage(t *testing.T) {
+	var restored bool
+	orig := enterRawMode
+	enterRawMode = func(*os.File) (func(), error) {
+		return func() { restored = true }, nil
+	}
+	t.Cleanup(func() { enterRawMode = orig })
+
+	var out strings.Builder
+	a := &asker{
+		in:          bufio.NewReader(strings.NewReader("\x1b[B \r")),
+		out:         &out,
+		tty:         os.Stdin, // never touched: the fake above takes it
+		interactive: true,
+		redraw:      true,
+	}
+	opts, on := fourRooms()
+
+	got, err := a.multiselect("Vacant rooms", opts, on)
+	if err != nil {
+		t.Fatalf("multiselect: %v", err)
+	}
+	if want := "Zimmer 2"; picked(opts, got) != want {
+		t.Errorf("got %q, want %q", picked(opts, got), want)
+	}
+
+	text := out.String()
+	if strings.Count(text, "\n") == 0 {
+		t.Fatal("nothing was drawn")
+	}
+	if n := strings.Count(text, "\n") - strings.Count(text, "\r\n"); n != 0 {
+		t.Errorf("%d newline(s) went out without a carriage return", n)
+	}
+	if !restored {
+		t.Error("the terminal was left in raw mode")
+	}
+	if a.out != io.Writer(&out) {
+		t.Error("the CRLF writer outlived the raw mode it was installed for")
+	}
 }
