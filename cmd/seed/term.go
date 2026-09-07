@@ -79,6 +79,17 @@ func readKey(in *bufio.Reader) (key, error) {
 	return key{kind: keyRune, r: rune(b)}, nil
 }
 
+// isTerminal reports whether f is a terminal — the check that decides whether
+// anything is asked at all.
+//
+// It asks the terminal driver rather than reading the file mode. A mode check
+// looks for a character device, and /dev/null is one: `seed < /dev/null` would
+// be taken for somebody sitting at a keyboard, and a script would be prompted
+// into rather than run on its defaults.
+func isTerminal(f *os.File) bool {
+	return term.IsTerminal(int(f.Fd()))
+}
+
 // rawMode puts the terminal into raw mode and returns the function that undoes
 // it. Raw mode is what makes a key press readable the moment it happens, and
 // it is also what makes a crashed program leave a shell that echoes nothing —

@@ -46,13 +46,6 @@ func newAsker() *asker {
 	}
 }
 
-// isTerminal reports whether f is a character device — a terminal — rather
-// than a pipe or a file. os.Stat is enough for this; no dependency needed.
-func isTerminal(f *os.File) bool {
-	info, err := f.Stat()
-	return err == nil && info.Mode()&os.ModeCharDevice != 0
-}
-
 // --- the frame -------------------------------------------------------------
 
 func (a *asker) printf(format string, args ...any) {

@@ -156,6 +156,18 @@ func TestIsTerminal(t *testing.T) {
 	if isTerminal(f) {
 		t.Error("a regular file reported itself as a terminal")
 	}
+
+	// /dev/null is a character device, so a file-mode check calls it a
+	// terminal — and `seed < /dev/null` gets prompted at instead of running
+	// on its defaults.
+	null, err := os.Open(os.DevNull)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = null.Close() })
+	if isTerminal(null) {
+		t.Error("/dev/null reported itself as a terminal")
+	}
 }
 
 // --- lists -----------------------------------------------------------------
