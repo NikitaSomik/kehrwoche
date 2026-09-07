@@ -95,6 +95,11 @@ func isBlock(d schedule.DutyType) bool {
 	return d == schedule.DutyTypeHall
 }
 
+// exitInterrupted is what a shell reports for a program stopped by SIGINT:
+// 128 plus the signal number. Ctrl+C reaches the prompts as a byte rather than
+// a signal, so nothing sets this for us.
+const exitInterrupted = 130
+
 const dateLayout = "2006-01-02"
 
 // regenFrom is the date -regen deletes from for a duty: the flag's date moved
@@ -147,11 +152,14 @@ func main() {
 		given:  given,
 	}
 	if err := run(context.Background(), newAsker("seed"), f); err != nil {
-		// A cancelled run has already said so inside the frame; anything
-		// else is a failure, and stderr is where a failure belongs.
-		if !errors.Is(err, errCancelled) {
-			fmt.Fprintln(os.Stderr, "seed:", err)
+		// A cancelled run has already said so inside the frame, and leaves by
+		// the exit code a shell uses for an interrupted program (128 + SIGINT)
+		// — non-zero, so `task seed && ...` stops, but distinguishable from a
+		// failure. Anything else is one, and stderr is where a failure belongs.
+		if errors.Is(err, errCancelled) {
+			os.Exit(exitInterrupted)
 		}
+		fmt.Fprintln(os.Stderr, "seed:", err)
 		os.Exit(1)
 	}
 }
