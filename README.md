@@ -109,7 +109,33 @@ the commit is gone, since forks and caches keep it.
 `cmd/seed` fills the `schedules` table. `-weeks` is the horizon per duty
 (laundry runs twice a week, so it gets twice the rows). Always dry-run first.
 
+Run it with no flags and it asks: which duties, how many weeks, which rooms are
+empty — then prints the plan and waits for a yes before writing. Any flag you
+do pass is taken as given and not asked about, so the commands below still work
+unchanged, and a piped or redirected stdin skips every question rather than
+hanging a script.
+
+The duties and the empty rooms are picked from a list rather than typed: arrow
+keys move, space toggles, `a` selects everything, enter confirms. Listing the
+rooms is the point of asking this way — a wrong `-vacant` produces a schedule
+that looks entirely plausible and calls the wrong people, and eight numbers are
+easier to check on screen than from memory. Where a list can't be drawn — a
+redirected stdout, a terminal that won't go into raw mode — the same question
+is answered by typing the same keys the flags take (`2,6`, `laundry`).
+
+`-regen` is the exception: it is never offered as a question. It deletes every
+row from `-start` forward with no upper bound, and that should cost typing a
+flag rather than a keystroke at the wrong moment.
+
+Treppenhaus is the exception to the exception, because `-regen` is the only
+mode it has — see below. Picking it from the list supplies the flag, and what
+the flag removes is printed above the confirmation instead: how many rows, and
+between which dates. Typing `-regen` never protected against the mistake that
+actually costs something, a `-start` earlier than intended; a count and a span
+do.
+
 ```bash
+task seed                                                    # ask for everything
 task seed -- -dry                                            # continue every duty, 26 weeks
 task seed -- -vacant 1,6 -regen -start 2026-08-28 -dry       # rewrite the future after a move-out
 task seed -- -duty laundry -weeks 12 -regen -start 2026-09-04 -dry
