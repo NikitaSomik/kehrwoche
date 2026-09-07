@@ -219,8 +219,9 @@ func TestNavigateTogglesEverythingWithA(t *testing.T) {
 		opts, on := fourRooms()
 		a, _ := newListAsker("a\r")
 		got, _ := a.navigate("Vacant rooms", opts, on)
-		if !allTrue(got) {
-			t.Errorf("got %q, want every room", picked(opts, got))
+		want := "Zimmer 1, Zimmer 2, Zimmer 3, Zimmer 4"
+		if picked(opts, got) != want {
+			t.Errorf("got %q, want %q", picked(opts, got), want)
 		}
 	})
 
@@ -353,5 +354,91 @@ func TestCRLFWriterLeavesAnExistingReturnAlone(t *testing.T) {
 	}
 	if got := out.String(); got != "\r\x1b[9A" {
 		t.Errorf("got %q, want the rewind sequence untouched", got)
+	}
+}
+
+// --- exclusive rows --------------------------------------------------------
+
+func withExclusive() ([]choice, []bool) {
+	opts := []choice{
+		{key: "toilet1", label: "Toilette 1"},
+		{key: "hall", label: "Treppenhaus", exclusive: true},
+		{key: "floor", label: "Etage"},
+	}
+	return opts, make([]bool, 3)
+}
+
+// An exclusive row can't share the answer, and the list says so by clearing
+// the other side rather than by refusing the key.
+func TestToggleClearsTheOtherSide(t *testing.T) {
+	t.Run("picking the exclusive row clears the rest", func(t *testing.T) {
+		opts, on := withExclusive()
+		on[0], on[2] = true, true
+
+		toggle(opts, on, 1)
+		if want := "Treppenhaus"; summarise(opts, on) != want {
+			t.Errorf("got %q, want %q", summarise(opts, on), want)
+		}
+	})
+
+	t.Run("picking anything else clears the exclusive row", func(t *testing.T) {
+		opts, on := withExclusive()
+		on[1] = true
+
+		toggle(opts, on, 0)
+		if want := "Toilette 1"; summarise(opts, on) != want {
+			t.Errorf("got %q, want %q", summarise(opts, on), want)
+		}
+	})
+
+	t.Run("the ordinary rows still stack", func(t *testing.T) {
+		opts, on := withExclusive()
+
+		toggle(opts, on, 0)
+		toggle(opts, on, 2)
+		if want := "Toilette 1, Etage"; summarise(opts, on) != want {
+			t.Errorf("got %q, want %q", summarise(opts, on), want)
+		}
+	})
+
+	// Turning a row off has nobody to clear, and must not resurrect anything.
+	t.Run("clearing a row touches nothing else", func(t *testing.T) {
+		opts, on := withExclusive()
+		on[0], on[2] = true, true
+
+		toggle(opts, on, 0)
+		if want := "Etage"; summarise(opts, on) != want {
+			t.Errorf("got %q, want %q", summarise(opts, on), want)
+		}
+	})
+}
+
+// "Everything" cannot mean an answer the list refuses, so the exclusive row is
+// not part of it.
+func TestSelectAllSkipsTheExclusiveRow(t *testing.T) {
+	opts, on := withExclusive()
+
+	selectAll(opts, on)
+	if want := "Toilette 1, Etage"; summarise(opts, on) != want {
+		t.Errorf("got %q, want %q", summarise(opts, on), want)
+	}
+
+	// Pressing it again clears the list rather than reaching for the one row
+	// that was deliberately left out.
+	selectAll(opts, on)
+	if summarise(opts, on) != "" {
+		t.Errorf("got %q, want nothing selected", summarise(opts, on))
+	}
+}
+
+// Selecting all while the exclusive row holds the answer has to drop it, or
+// the result would be the combination the list exists to prevent.
+func TestSelectAllReplacesTheExclusiveRow(t *testing.T) {
+	opts, on := withExclusive()
+	on[1] = true
+
+	selectAll(opts, on)
+	if want := "Toilette 1, Etage"; summarise(opts, on) != want {
+		t.Errorf("got %q, want %q", summarise(opts, on), want)
 	}
 }

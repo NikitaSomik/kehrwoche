@@ -234,6 +234,12 @@ type choice struct {
 	key   string
 	label string
 	hint  string
+	// exclusive marks a row that cannot share the answer: selecting it clears
+	// everything else, and selecting anything else clears it. It shapes the
+	// live list only — the rule it stands for is the caller's, and the caller
+	// still has to enforce it on the answers this list can't police (a typed
+	// fallback, or a flag that skipped the question altogether).
+	exclusive bool
 }
 
 const listHint = "↑↓ move · space toggle · enter confirm"
@@ -287,13 +293,10 @@ func (a *asker) navigate(question string, opts []choice, on []bool) ([]bool, err
 		case keyDown:
 			cur = (cur + 1) % len(opts)
 		case keySpace:
-			on[cur] = !on[cur]
+			toggle(opts, on, cur)
 		case keyRune:
 			if k.r == 'a' || k.r == 'A' {
-				all := !allTrue(on)
-				for i := range on {
-					on[i] = all
-				}
+				selectAll(opts, on)
 			}
 		}
 		a.rewind(drawn)
@@ -380,13 +383,37 @@ func summarise(opts []choice, on []bool) string {
 	return strings.Join(picked, ", ")
 }
 
-func allTrue(on []bool) bool {
-	for _, v := range on {
-		if !v {
-			return false
+// toggle flips one row and leaves the selection legal. Rather than refusing
+// the key or greying rows out — which needs a disabled state, an explanation
+// of why space does nothing, and a way back out — an exclusive row simply
+// clears the others as it goes on, and is cleared by them. You watch it
+// happen, and every selection stays one key press away.
+func toggle(opts []choice, on []bool, i int) {
+	on[i] = !on[i]
+	if !on[i] {
+		return
+	}
+	for j := range on {
+		if j != i && (opts[i].exclusive || opts[j].exclusive) {
+			on[j] = false
 		}
 	}
-	return len(on) > 0
+}
+
+// selectAll turns on everything that can be held at once, or clears the list
+// if that is already the case. An exclusive row is never part of "everything":
+// including it would produce the one answer the list exists to prevent.
+func selectAll(opts []choice, on []bool) {
+	full := true
+	for i, o := range opts {
+		if !o.exclusive && !on[i] {
+			full = false
+			break
+		}
+	}
+	for i, o := range opts {
+		on[i] = !full && !o.exclusive
+	}
 }
 
 func indexOf(list []string, want string) int {

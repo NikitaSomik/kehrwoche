@@ -97,6 +97,18 @@ func isBlock(d schedule.DutyType) bool {
 
 const dateLayout = "2006-01-02"
 
+// regenFrom is the date -regen deletes from for a duty: the flag's date moved
+// onto that duty's own event day. Counting what will be deleted and generating
+// what replaces it have to agree on this boundary exactly, so they read it
+// from here rather than each computing it.
+func regenFrom(duty schedule.DutyType, startStr string) (time.Time, error) {
+	parsed, err := parseStart(startStr)
+	if err != nil {
+		return time.Time{}, err
+	}
+	return duty.EventDate(parsed), nil
+}
+
 func parseStart(s string) (time.Time, error) {
 	t, err := time.Parse(dateLayout, s)
 	if err != nil {
@@ -170,6 +182,9 @@ func run(ctx context.Context, a *asker, f cliFlags) error {
 	if err != nil {
 		return a.stop(err)
 	}
+	if autoRegen(duties, f, a.interactive) {
+		f.regen = true
+	}
 	// Before anything else is asked or connected to: a selection the run can't
 	// honour should cost one question, not all of them.
 	if err := checkBlockDuties(duties, f.regen); err != nil {
@@ -216,6 +231,21 @@ func run(ctx context.Context, a *asker, f cliFlags) error {
 	})
 }
 
+// autoRegen reports whether the run should supply -regen itself.
+//
+// A block duty has no other mode: without -regen there is nothing for it to
+// generate, so demanding the flag on top of choosing the duty is a toll with
+// no decision behind it. What -regen actually costs — rows deleted from -start
+// forward — is put in front of the confirmation instead, counted, which also
+// catches the mistake typing the flag never did: the wrong -start.
+//
+// Only for a selection made in the list, though. On the command line `-duty
+// hall` has to keep failing loudly, or a script that has always run it would
+// quietly start deleting.
+func autoRegen(duties []schedule.DutyType, f cliFlags, interactive bool) bool {
+	return interactive && !f.given["duty"] && !f.regen && allBlock(duties)
+}
+
 // chooseDuties resolves -duty, asking as a list when the flag wasn't given.
 // What comes pre-selected is exactly -duty's own default, so answering with
 // enter changes nothing.
@@ -230,9 +260,13 @@ func chooseDuties(a *asker, f cliFlags) ([]schedule.DutyType, error) {
 	for i, d := range all {
 		opts[i] = choice{key: string(d), label: d.Label()}
 		if isBlock(d) {
-			// Picking it here isn't the whole answer: seed still refuses it
-			// without the block's first Friday.
-			opts[i].hint = "needs -regen -start"
+			// It replaces a block rather than extending a horizon, so it can
+			// neither share the run nor be seeded without -regen. The list
+			// enforces the first by clearing the other side; autoRegen
+			// supplies the second, and what that deletes is named before the
+			// confirmation instead of being paid for by typing a flag.
+			opts[i].exclusive = true
+			opts[i].hint = "runs on its own, replaces a block"
 		}
 		on[i] = !isBlock(d)
 	}
@@ -370,6 +404,7 @@ func seed(ctx context.Context, conn seedConn, p seedParams) error {
 	defer func() { _ = tx.Rollback(ctx) }()
 
 	var totals []dutyTotal
+	var doomed []deletion
 	for _, duty := range p.duties {
 		active := activeRooms(rotations[duty], p.vacant)
 		if len(active) == 0 {
@@ -385,6 +420,16 @@ func seed(ctx context.Context, conn seedConn, p seedParams) error {
 			n = len(active)
 			note = "block of one week per occupied room (-weeks does not apply)"
 		}
+		// Count before planDuty runs the DELETE — afterwards there is nothing
+		// left to count, and the confirmation would have nothing to name.
+		if p.regen {
+			d, err := countReplaced(ctx, tx, duty, p.start)
+			if err != nil {
+				return err
+			}
+			doomed = append(doomed, d)
+		}
+
 		rows, err := planDuty(ctx, tx, duty, rotations[duty], active, n, p.start, p.regen, block)
 		if err != nil {
 			return err
@@ -422,6 +467,8 @@ func seed(ctx context.Context, conn seedConn, p seedParams) error {
 	// The totals go last and stay on screen: with hundreds of rows scrolled
 	// past, this is what the confirmation is actually answered against.
 	printTotals(w, st, totals)
+	// What -regen takes away, next to what it puts back, and before the yes.
+	printDeletions(w, st, doomed)
 
 	if p.dry {
 		finish("dry run, nothing written")
@@ -474,6 +521,71 @@ func checkBlockDuties(duties []schedule.DutyType, regen bool) error {
 		return fmt.Errorf("%s: seed it with -regen -start <first Friday of the block>", dutyList(block))
 	}
 	return nil
+}
+
+// deletion is what -regen will remove for one duty, counted before the DELETE
+// runs so the confirmation can say so in rows and dates rather than in the
+// name of a flag.
+type deletion struct {
+	duty schedule.DutyType
+	rows int
+	from time.Time
+	to   time.Time
+}
+
+const replacedSQL = `SELECT count(*), min(duty_date), max(duty_date) FROM schedules WHERE duty_type = $1 AND duty_date >= $2`
+
+func countReplaced(ctx context.Context, tx txQuerier, duty schedule.DutyType, startStr string) (deletion, error) {
+	from, err := regenFrom(duty, startStr)
+	if err != nil {
+		return deletion{}, err
+	}
+	// min and max are NULL when nothing matches, so they are scanned through
+	// pointers rather than into zero times that would print as real dates.
+	var lo, hi *time.Time
+	d := deletion{duty: duty}
+	if err := tx.QueryRow(ctx, replacedSQL, duty, from).Scan(&d.rows, &lo, &hi); err != nil {
+		return deletion{}, fmt.Errorf("count %s rows to replace: %w", duty, err)
+	}
+	if lo != nil && hi != nil {
+		d.from, d.to = *lo, *hi
+	}
+	return d, nil
+}
+
+// printDeletions names what -regen removes. Typing the flag never guarded
+// against the mistake that actually costs something — a -start earlier than
+// intended — because the flag says nothing about which rows it reaches. A
+// count and a span do: one block replaced looks like one block, and a slip of
+// a year looks like months.
+func printDeletions(w io.Writer, st style, dels []deletion) {
+	var real []deletion
+	total, width := 0, 0
+	for _, d := range dels {
+		if d.rows == 0 {
+			continue
+		}
+		real = append(real, d)
+		total += d.rows
+		if n := len([]rune(d.duty.Label())); n > width {
+			width = n
+		}
+	}
+	if len(real) == 0 {
+		return
+	}
+
+	fmt.Fprintf(w, "%s  %s\n", st.warning(symWarn),
+		st.warning(fmt.Sprintf("-regen deletes %d existing rows first", total)))
+	for _, d := range real {
+		fmt.Fprintf(w, "%s  %s  %4d  %s … %s\n",
+			st.rail(symBar),
+			st.duty(fmt.Sprintf("%-*s", width, d.duty.Label())),
+			d.rows,
+			d.from.Format(dateLayout),
+			d.to.Format(dateLayout))
+	}
+	fmt.Fprintf(w, "%s\n", st.rail(symBar))
 }
 
 // dutyTotal is one line of the summary: what a duty got, and the span it
@@ -530,11 +642,11 @@ func planDuty(ctx context.Context, tx txQuerier, duty schedule.DutyType, rotatio
 	switch {
 	case regen:
 		// startStr is guaranteed non-empty here (run rejects -regen without -start).
-		parsed, err := parseStart(startStr)
+		var err error
+		date, err = regenFrom(duty, startStr)
 		if err != nil {
 			return nil, err
 		}
-		date = duty.EventDate(parsed)
 
 		// Continue the rotation from the last assignment that survives the
 		// delete, so dropping a room closes the cycle up instead of restarting

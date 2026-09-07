@@ -127,6 +127,13 @@ is answered by typing the same keys the flags take (`2,6`, `laundry`).
 row from `-start` forward with no upper bound, and that should cost typing a
 flag rather than a keystroke at the wrong moment.
 
+Treppenhaus is the exception to the exception, because `-regen` is the only
+mode it has — see below. Picking it from the list supplies the flag, and what
+the flag removes is printed above the confirmation instead: how many rows, and
+between which dates. Typing `-regen` never protected against the mistake that
+actually costs something, a `-start` earlier than intended; a count and a span
+do.
+
 ```bash
 task seed                                                    # ask for everything
 task seed -- -dry                                            # continue every duty, 26 weeks
