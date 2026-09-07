@@ -123,16 +123,29 @@ easier to check on screen than from memory. Where a list can't be drawn — a
 redirected stdout, a terminal that won't go into raw mode — the same question
 is answered by typing the same keys the flags take (`2,6`, `laundry`).
 
+Ctrl+C is the way out: nothing is written, and the command leaves with 130,
+the code a shell reports for an interrupted program. Esc does nothing, on
+purpose — over a slow connection the three bytes of an arrow key can arrive
+separately and be indistinguishable from it, and losing a key press is better
+than losing the run.
+
 `-regen` is the exception: it is never offered as a question. It deletes every
 row from `-start` forward with no upper bound, and that should cost typing a
 flag rather than a keystroke at the wrong moment.
 
+Whatever `-regen` is about to remove is counted before it runs and printed
+above the confirmation — how many rows, and between which dates. Typing the
+flag never guarded against the mistake that actually costs something, a
+`-start` earlier than intended, because the flag says nothing about which rows
+it reaches; a count and a span do. This is for every `-regen`, a move-out among
+the in-flat duties included, not only for the staircase.
+
 Treppenhaus is the exception to the exception, because `-regen` is the only
-mode it has — see below. Picking it from the list supplies the flag, and what
-the flag removes is printed above the confirmation instead: how many rows, and
-between which dates. Typing `-regen` never protected against the mistake that
-actually costs something, a `-start` earlier than intended; a count and a span
-do.
+mode it has — see below. It also cannot share a run: `-regen` would delete the
+other duties' rows from `-start` too, behind a plan that looked perfectly
+ordinary. So the list holds it apart — picking Treppenhaus clears the in-flat
+duties, and picking any of them clears Treppenhaus — and choosing it supplies
+the flag it can't do without.
 
 ```bash
 task seed                                                    # ask for everything
