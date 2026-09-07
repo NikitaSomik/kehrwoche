@@ -454,3 +454,135 @@ func TestSelectAllReplacesTheExclusiveRow(t *testing.T) {
 		t.Errorf("got %q, want %q", summarise(opts, on), want)
 	}
 }
+
+// --- fitting the terminal ---------------------------------------------------
+
+func TestFit(t *testing.T) {
+	cases := []struct {
+		name string
+		text string
+		n    int
+		want string
+	}{
+		{"no limit", "Treppenhaus", 0, "Treppenhaus"},
+		{"a negative limit is no limit", "Treppenhaus", -1, "Treppenhaus"},
+		{"shorter than the limit", "Etage", 10, "Etage"},
+		{"exactly the limit", "Etage", 5, "Etage"},
+		{"longer, so it says so", "Treppenhaus", 6, "Trepp…"},
+		{"one column left", "Treppenhaus", 1, "…"},
+		{"runes, not bytes", "Waschküche", 6, "Wasch…"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := fit(tc.text, tc.n); got != tc.want {
+				t.Errorf("got %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+// The label is what the answer is made of and the hint only explains it, so
+// the hint gives way first — and goes entirely rather than be cut to a stub.
+func TestFitPair(t *testing.T) {
+	t.Run("both fit", func(t *testing.T) {
+		label, hint := fitPair("Treppenhaus", "runs on its own", 40)
+		if label != "Treppenhaus" || hint != "runs on its own" {
+			t.Errorf("got %q / %q, want both untouched", label, hint)
+		}
+	})
+
+	t.Run("the hint is trimmed before the label", func(t *testing.T) {
+		label, hint := fitPair("Treppenhaus", "runs on its own", 26)
+		if label != "Treppenhaus" {
+			t.Errorf("label got cut while the hint still had room: %q", label)
+		}
+		if hint == "" || len([]rune(hint)) > 13 {
+			t.Errorf("hint %q does not fit the 13 columns left", hint)
+		}
+	})
+
+	t.Run("too little left for a hint drops it", func(t *testing.T) {
+		label, hint := fitPair("Treppenhaus", "runs on its own", 16)
+		if hint != "" {
+			t.Errorf("got hint %q, want it dropped rather than cut to a stub", hint)
+		}
+		if label != "Treppenhaus" {
+			t.Errorf("got label %q", label)
+		}
+	})
+
+	t.Run("a label alone is cut when it has to be", func(t *testing.T) {
+		label, _ := fitPair("Treppenhaus", "", 6)
+		if label != "Trepp…" {
+			t.Errorf("got %q", label)
+		}
+	})
+}
+
+func TestBudget(t *testing.T) {
+	t.Run("an unknown width trims nothing", func(t *testing.T) {
+		a := &asker{}
+		if got := a.budget(rowPrefix); got != 0 {
+			t.Errorf("got %d, want 0", got)
+		}
+	})
+
+	// One column is held back: a line that exactly fills the terminal wraps
+	// on some of them.
+	t.Run("a column is held back", func(t *testing.T) {
+		a := &asker{width: 80}
+		if got, want := a.budget(rowPrefix), 80-rowPrefix-1; got != want {
+			t.Errorf("got %d, want %d", got, want)
+		}
+	})
+
+	t.Run("a terminal too narrow to hold anything still leaves one", func(t *testing.T) {
+		a := &asker{width: 4}
+		if got := a.budget(rowPrefix); got != 1 {
+			t.Errorf("got %d, want 1", got)
+		}
+	})
+}
+
+// The regression this all exists for: rewind moves the cursor back over the
+// lines paintList says it drew, and the terminal moves it over the lines it
+// displayed. A row wider than the terminal is one of the former and two of the
+// latter, and the redraw then leaves debris and walks down the screen.
+func TestPaintListNeverReachesTheEdge(t *testing.T) {
+	const width = 44
+
+	var out strings.Builder
+	a := &asker{out: &out, interactive: true, width: width}
+	opts := []choice{
+		{label: "Toilette 1"},
+		{label: "Treppenhaus", hint: "runs on its own, replaces a block"},
+		{label: "Waschküche"},
+	}
+	on := make([]bool, len(opts))
+
+	drawn := a.paintList("Duties to seed", opts, on, 1)
+
+	lines := strings.Split(strings.TrimRight(out.String(), "\n"), "\n")
+	if len(lines) != drawn {
+		t.Fatalf("drew %d lines but reported %d", len(lines), drawn)
+	}
+	for _, l := range lines {
+		if n := len([]rune(l)); n >= width {
+			t.Errorf("line reaches the edge at %d of %d columns: %q", n, width, l)
+		}
+	}
+}
+
+// With no width to fit to, nothing is trimmed — a redirected plan keeps its
+// full text.
+func TestPaintListLeavesTextAloneWithoutAWidth(t *testing.T) {
+	var out strings.Builder
+	a := &asker{out: &out, interactive: true}
+	opts := []choice{{label: "Treppenhaus", hint: "runs on its own, replaces a block"}}
+
+	a.paintList("Duties to seed", opts, make([]bool, 1), 0)
+
+	if !strings.Contains(out.String(), "runs on its own, replaces a block") {
+		t.Errorf("the hint was trimmed without a width to trim to:\n%s", out.String())
+	}
+}

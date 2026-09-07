@@ -30,7 +30,14 @@ type asker struct {
 	// finished prompt into its answer means moving the cursor back over it, so
 	// a redirected stdout gets the plain, additive form instead.
 	redraw bool
-	st     style
+	// width is the terminal's, or 0 when unknown. Rewinding counts the lines
+	// printed, and the terminal counts the lines displayed; a line too long to
+	// fit becomes two of the latter and one of the former, and the redraw then
+	// leaves debris behind and walks down the screen. Rather than predict the
+	// wrap — Go can't measure a rune in columns, and some terminals draw ◼ and
+	// ◆ double width — nothing is allowed to reach the edge in the first place.
+	width int
+	st    style
 }
 
 // newAsker reads the terminal, if this is one. Deciding once here means the
@@ -42,6 +49,7 @@ func newAsker() *asker {
 		tty:         os.Stdin,
 		interactive: isTerminal(os.Stdin),
 		redraw:      isTerminal(os.Stdout),
+		width:       terminalWidth(os.Stdout),
 		st:          newStyle(),
 	}
 }
@@ -90,6 +98,62 @@ func (a *asker) step(sym, question, hint string) {
 	a.printf("\n")
 }
 
+// The frame each kind of line carries before its text, in columns: the symbol
+// and two spaces for a step, and the rail, cursor and mark for a list row.
+const (
+	stepPrefix = 3
+	rowPrefix  = 7
+)
+
+// budget is how many columns are left for text after prefix columns of frame,
+// or 0 when the width is unknown and nothing should be trimmed. One column is
+// held back: a line that exactly fills the terminal wraps on some of them.
+func (a *asker) budget(prefix int) int {
+	if a.width <= 0 {
+		return 0
+	}
+	if n := a.width - prefix - 1; n > 0 {
+		return n
+	}
+	return 1
+}
+
+// fit trims text to at most n runes, saying so with an ellipsis. Runes, not
+// columns — Go has no way to measure the latter — which is why the caller
+// holds a column back and why the hint is dropped before the label is cut.
+// n <= 0 means no limit.
+func fit(text string, n int) string {
+	if n <= 0 {
+		return text
+	}
+	r := []rune(text)
+	if len(r) <= n {
+		return text
+	}
+	if n == 1 {
+		return "…"
+	}
+	return string(r[:n-1]) + "…"
+}
+
+// fitPair trims a label and the hint beside it into one budget. The label is
+// what the answer is made of and the hint only explains it, so the hint gives
+// way first and disappears entirely rather than be cut to a stub.
+func fitPair(label, hint string, budget int) (string, string) {
+	if budget <= 0 {
+		return label, hint
+	}
+	label = fit(label, budget)
+	if hint == "" {
+		return label, ""
+	}
+	rest := budget - len([]rune(label)) - 2
+	if rest < 8 {
+		return label, ""
+	}
+	return label, fit(hint, rest)
+}
+
 // rewind moves the cursor back over n lines already drawn and clears them.
 // Without a terminal there is no cursor to move, so nothing is written and the
 // output simply accumulates — which is also what makes the prompts testable.
@@ -127,6 +191,7 @@ func (a *asker) line(question, def string) string {
 	if def != "" {
 		hint = "(" + def + ")"
 	}
+	question, hint = fitPair(question, hint, a.budget(stepPrefix))
 	a.step(a.st.active(symActive), question, hint)
 	a.printf("%s  %s ", a.st.rail(symBar), a.st.rail(markHere))
 
@@ -300,15 +365,21 @@ func (a *asker) navigate(question string, opts []choice, on []bool) ([]bool, err
 }
 
 // paintList draws the list and reports how many lines it took, which is how
-// far back the cursor has to go to redraw it.
+// far back the cursor has to go to redraw it. Every row is trimmed to the
+// terminal's width first, so that count is also the number of lines the
+// terminal displays — see asker.width.
 func (a *asker) paintList(question string, opts []choice, on []bool, cur int) int {
-	a.step(a.st.active(symActive), question, listHint)
+	q, h := fitPair(question, listHint, a.budget(stepPrefix))
+	a.step(a.st.active(symActive), q, h)
+
 	width := 0
 	for _, o := range opts {
 		if n := len([]rune(o.label)); n > width {
 			width = n
 		}
 	}
+
+	budget := a.budget(rowPrefix)
 	for i, o := range opts {
 		mark, here := markOff, "  "
 		if on[i] {
@@ -317,21 +388,24 @@ func (a *asker) paintList(question string, opts []choice, on []bool, cur int) in
 		if i == cur {
 			here = a.st.value(markHere) + " "
 		}
+
 		// Only a row with something to its right needs padding, and it is
-		// padded before colouring: the escape bytes count towards a %-*s
-		// width and would leave the hint column ragged.
+		// padded before it is trimmed and coloured: the escape bytes count
+		// towards a %-*s width and would leave the hint column ragged.
 		label := o.label
 		if o.hint != "" {
 			label = fmt.Sprintf("%-*s", width, o.label)
 		}
+		label, hint := fitPair(label, o.hint, budget)
+
 		if on[i] {
 			label = a.st.done(label)
 		} else if i == cur {
 			label = a.st.current(label)
 		}
 		a.printf("%s  %s%s %s", a.st.rail(symBar), here, mark, label)
-		if o.hint != "" {
-			a.printf("  %s", a.st.rail(o.hint))
+		if hint != "" {
+			a.printf("  %s", a.st.rail(hint))
 		}
 		a.printf("\n")
 	}

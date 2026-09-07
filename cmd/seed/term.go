@@ -90,6 +90,16 @@ func isTerminal(f *os.File) bool {
 	return term.IsTerminal(int(f.Fd()))
 }
 
+// terminalWidth is how many columns f has, or 0 when that can't be known —
+// f isn't a terminal, or the ioctl failed. Callers treat 0 as "don't trim".
+func terminalWidth(f *os.File) int {
+	w, _, err := term.GetSize(int(f.Fd()))
+	if err != nil || w <= 0 {
+		return 0
+	}
+	return w
+}
+
 // rawMode puts the terminal into raw mode and returns the function that undoes
 // it. Raw mode is what makes a key press readable the moment it happens, and
 // it is also what makes a crashed program leave a shell that echoes nothing —
