@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -307,6 +308,12 @@ const listHint = "↑↓ move · space toggle · enter confirm"
 // falls back to a typed, comma-separated list of keys where it can't — a
 // redirected stdout, or a terminal that won't go into raw mode.
 func (a *asker) multiselect(question string, opts []choice, on []bool) ([]bool, error) {
+	// Work on a copy. navigate edits its selection in place and typeKeys
+	// builds a fresh slice, so without this the caller has no way to know
+	// whether the slice it passed came back changed — and a cancelled prompt
+	// would hand back an error with the caller's own selection already
+	// overwritten behind it.
+	on = slices.Clone(on)
 	if !a.interactive || len(opts) == 0 {
 		return on, nil
 	}

@@ -586,3 +586,46 @@ func TestPaintListLeavesTextAloneWithoutAWidth(t *testing.T) {
 		t.Errorf("the hint was trimmed without a width to trim to:\n%s", out.String())
 	}
 }
+
+// navigate edits its selection in place and typeKeys builds a fresh slice, so
+// without a copy at the door the caller could not tell whether the slice it
+// passed came back changed — and a cancelled prompt would hand back an error
+// with that slice already overwritten behind it.
+func TestMultiselectLeavesTheCallersSliceAlone(t *testing.T) {
+	t.Run("the typed fallback", func(t *testing.T) {
+		opts, on := fourRooms()
+		on[0] = true
+		a, _ := newTestAsker("2\n", true)
+
+		got, err := a.multiselect("Vacant rooms", opts, on)
+		if err != nil {
+			t.Fatalf("multiselect: %v", err)
+		}
+		if !on[0] || on[1] {
+			t.Errorf("the caller's selection changed: %v", on)
+		}
+		if want := "Zimmer 2"; picked(opts, got) != want {
+			t.Errorf("got %q, want %q", picked(opts, got), want)
+		}
+	})
+
+	t.Run("with nobody to ask", func(t *testing.T) {
+		opts, on := fourRooms()
+		on[0] = true
+		a, _ := newTestAsker("", false)
+
+		got, err := a.multiselect("Vacant rooms", opts, on)
+		if err != nil {
+			t.Fatalf("multiselect: %v", err)
+		}
+		// The answer is the same selection, but it must not be the same slice:
+		// writing to what came back has to leave the caller's copy alone.
+		got[3] = true
+		if on[3] {
+			t.Error("the answer aliases the caller's slice")
+		}
+		if !got[0] {
+			t.Error("the default selection was lost")
+		}
+	})
+}

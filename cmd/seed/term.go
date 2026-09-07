@@ -116,12 +116,15 @@ func rawMode(f *os.File) (restore func(), err error) {
 	undo := func() { once.Do(func() { _ = term.Restore(fd, old) }) }
 
 	// Ctrl+C arrives as a byte in raw mode rather than a signal, so this is
-	// here for the ones that don't: a kill, a closed terminal window.
-	// Restoring and then re-raising leaves the default behaviour intact, only
-	// not before the terminal is usable again.
+	// here for the ones that don't reach the program as keystrokes: a kill, a
+	// closed terminal window. SIGINT is in the list for the same reason — the
+	// terminal will never send it while raw mode is on, but `kill -INT` will,
+	// and its default action ends the process without running a single defer,
+	// leaving a shell that echoes nothing. Restoring and then re-raising keeps
+	// the default behaviour, only not before the terminal is usable again.
 	sig := make(chan os.Signal, 1)
 	done := make(chan struct{})
-	signal.Notify(sig, syscall.SIGTERM, syscall.SIGHUP)
+	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
 	go func() {
 		select {
 		case s := <-sig:
