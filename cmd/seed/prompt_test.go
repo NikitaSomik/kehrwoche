@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"errors"
 	"os"
 	"strings"
 	"testing"
@@ -154,5 +155,203 @@ func TestIsTerminal(t *testing.T) {
 	t.Cleanup(func() { _ = f.Close() })
 	if isTerminal(f) {
 		t.Error("a regular file reported itself as a terminal")
+	}
+}
+
+// --- lists -----------------------------------------------------------------
+
+func newListAsker(keys string) (*asker, *strings.Builder) {
+	var out strings.Builder
+	return &asker{
+		in:          bufio.NewReader(strings.NewReader(keys)),
+		out:         &out,
+		interactive: true,
+		// No terminal, so nothing rewinds and the frames simply accumulate.
+		redraw: false,
+	}, &out
+}
+
+func fourRooms() ([]choice, []bool) {
+	opts := []choice{
+		{key: "1", label: "Zimmer 1"},
+		{key: "2", label: "Zimmer 2"},
+		{key: "3", label: "Zimmer 3"},
+		{key: "4", label: "Zimmer 4"},
+	}
+	return opts, make([]bool, 4)
+}
+
+func picked(opts []choice, on []bool) string {
+	return summarise(opts, on)
+}
+
+func TestNavigateSelectsWithTheArrowKeys(t *testing.T) {
+	opts, on := fourRooms()
+	// down, space (2), down, down, space (4), enter
+	a, _ := newListAsker("\x1b[B \x1b[B\x1b[B \r")
+
+	got, err := a.navigate("Vacant rooms", opts, on)
+	if err != nil {
+		t.Fatalf("navigate: %v", err)
+	}
+	if want := "Zimmer 2, Zimmer 4"; picked(opts, got) != want {
+		t.Errorf("got %q, want %q", picked(opts, got), want)
+	}
+}
+
+// The cursor is a ring: up from the first row is the last one, which is how
+// you reach the bottom of a list of eight rooms in one key press.
+func TestNavigateWrapsAtTheEnds(t *testing.T) {
+	opts, on := fourRooms()
+	a, _ := newListAsker("\x1b[A \r") // up from the top, then select
+
+	got, err := a.navigate("Vacant rooms", opts, on)
+	if err != nil {
+		t.Fatalf("navigate: %v", err)
+	}
+	if want := "Zimmer 4"; picked(opts, got) != want {
+		t.Errorf("got %q, want %q", picked(opts, got), want)
+	}
+}
+
+func TestNavigateTogglesEverythingWithA(t *testing.T) {
+	t.Run("a selects all", func(t *testing.T) {
+		opts, on := fourRooms()
+		a, _ := newListAsker("a\r")
+		got, _ := a.navigate("Vacant rooms", opts, on)
+		if !allTrue(got) {
+			t.Errorf("got %q, want every room", picked(opts, got))
+		}
+	})
+
+	t.Run("a again clears them", func(t *testing.T) {
+		opts, on := fourRooms()
+		a, _ := newListAsker("aa\r")
+		got, _ := a.navigate("Vacant rooms", opts, on)
+		if picked(opts, got) != "" {
+			t.Errorf("got %q, want nothing selected", picked(opts, got))
+		}
+	})
+}
+
+// Ctrl+C is a byte in raw mode, not a signal, so the list has to treat it as an
+// answer that ends the run — and it must not come back as a selection.
+func TestNavigateCancelsOnInterrupt(t *testing.T) {
+	opts, on := fourRooms()
+	a, _ := newListAsker(" \x03")
+
+	got, err := a.navigate("Vacant rooms", opts, on)
+	if !errors.Is(err, errCancelled) {
+		t.Fatalf("got %v, want errCancelled", err)
+	}
+	if got != nil {
+		t.Errorf("got a selection %v; a cancelled prompt has no answer", got)
+	}
+}
+
+// An input that stops mid-list keeps what was selected rather than inventing
+// an answer or spinning on a read that will never return.
+func TestNavigateKeepsTheSelectionWhenInputEnds(t *testing.T) {
+	opts, on := fourRooms()
+	a, _ := newListAsker("\x1b[B ")
+
+	got, err := a.navigate("Vacant rooms", opts, on)
+	if err != nil {
+		t.Fatalf("navigate: %v", err)
+	}
+	if want := "Zimmer 2"; picked(opts, got) != want {
+		t.Errorf("got %q, want %q", picked(opts, got), want)
+	}
+}
+
+func TestMultiselectAsksNothingWithoutATerminal(t *testing.T) {
+	opts, on := fourRooms()
+	on[0] = true
+	a, out := newTestAsker("2,3\n", false)
+
+	got, err := a.multiselect("Vacant rooms", opts, on)
+	if err != nil {
+		t.Fatalf("multiselect: %v", err)
+	}
+	if want := "Zimmer 1"; picked(opts, got) != want {
+		t.Errorf("got %q, want the untouched default %q", picked(opts, got), want)
+	}
+	if out.String() != "" {
+		t.Errorf("printed %q; a script must not be shown prompts", out.String())
+	}
+}
+
+// Without a terminal to navigate, the same question is answered by typing the
+// keys — the same ones -vacant and -duty take on the command line.
+func TestMultiselectFallsBackToTypedKeys(t *testing.T) {
+	t.Run("keys are matched", func(t *testing.T) {
+		opts, on := fourRooms()
+		a, _ := newTestAsker("2, 4\n", true)
+
+		got, err := a.multiselect("Vacant rooms", opts, on)
+		if err != nil {
+			t.Fatalf("multiselect: %v", err)
+		}
+		if want := "Zimmer 2, Zimmer 4"; picked(opts, got) != want {
+			t.Errorf("got %q, want %q", picked(opts, got), want)
+		}
+	})
+
+	t.Run("an empty answer keeps the default", func(t *testing.T) {
+		opts, on := fourRooms()
+		on[2] = true
+		a, _ := newTestAsker("\n", true)
+
+		got, err := a.multiselect("Vacant rooms", opts, on)
+		if err != nil {
+			t.Fatalf("multiselect: %v", err)
+		}
+		if want := "Zimmer 3"; picked(opts, got) != want {
+			t.Errorf("got %q, want %q", picked(opts, got), want)
+		}
+	})
+
+	t.Run("an unknown key is an error naming the valid ones", func(t *testing.T) {
+		opts, on := fourRooms()
+		a, _ := newTestAsker("9\n", true)
+
+		_, err := a.multiselect("Vacant rooms", opts, on)
+		if err == nil {
+			t.Fatal("got nil, want an error")
+		}
+		if !strings.Contains(err.Error(), "1, 2, 3, 4") {
+			t.Errorf("error should list the valid keys: %v", err)
+		}
+	})
+}
+
+// Raw mode switches off the terminal driver's own \n → \r\n translation, so a
+// bare newline drops a line without returning to column 0 and the list walks
+// off the right of the screen a step at a time.
+func TestCRLFWriterReturnsTheCarriage(t *testing.T) {
+	var out strings.Builder
+	w := crlfWriter{&out}
+
+	n, err := w.Write([]byte("one\ntwo\n"))
+	if err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	if got := out.String(); got != "one\r\ntwo\r\n" {
+		t.Errorf("got %q, want every newline paired with a return", got)
+	}
+	// io.Writer's contract is about the caller's bytes, not the translated
+	// ones; a longer count reads as a short write to everything upstream.
+	if n != len("one\ntwo\n") {
+		t.Errorf("reported %d bytes written, want %d", n, len("one\ntwo\n"))
+	}
+}
+
+func TestCRLFWriterLeavesAnExistingReturnAlone(t *testing.T) {
+	var out strings.Builder
+	if _, err := (crlfWriter{&out}).Write([]byte("\r\x1b[9A")); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	if got := out.String(); got != "\r\x1b[9A" {
+		t.Errorf("got %q, want the rewind sequence untouched", got)
 	}
 }

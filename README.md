@@ -115,6 +115,14 @@ do pass is taken as given and not asked about, so the commands below still work
 unchanged, and a piped or redirected stdin skips every question rather than
 hanging a script.
 
+The duties and the empty rooms are picked from a list rather than typed: arrow
+keys move, space toggles, `a` selects everything, enter confirms. Listing the
+rooms is the point of asking this way — a wrong `-vacant` produces a schedule
+that looks entirely plausible and calls the wrong people, and eight numbers are
+easier to check on screen than from memory. Where a list can't be drawn — a
+redirected stdout, a terminal that won't go into raw mode — the same question
+is answered by typing the same keys the flags take (`2,6`, `laundry`).
+
 `-regen` is the exception: it is never offered as a question. It deletes every
 row from `-start` forward with no upper bound, and that should cost typing a
 flag rather than a keystroke at the wrong moment.

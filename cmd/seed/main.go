@@ -23,7 +23,9 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -133,7 +135,11 @@ func main() {
 		given:  given,
 	}
 	if err := run(context.Background(), newAsker(), f); err != nil {
-		fmt.Fprintln(os.Stderr, "seed:", err)
+		// A cancelled run has already said so inside the frame; anything
+		// else is a failure, and stderr is where a failure belongs.
+		if !errors.Is(err, errCancelled) {
+			fmt.Fprintln(os.Stderr, "seed:", err)
+		}
 		os.Exit(1)
 	}
 }
@@ -158,18 +164,22 @@ type cliFlags struct {
 // shape for that: destroying months of schedule should take typing the flag,
 // not pressing a key at the wrong moment.
 func run(ctx context.Context, a *asker, f cliFlags) error {
-	if !f.given["duty"] {
-		f.duty = a.line("Duties to seed (comma-separated, empty = "+dutyNames(defaultDuties())+")", "")
-	}
-	duties, err := selectedDuties(f.duty)
+	a.intro("seed · Kehrwoche")
+
+	duties, err := chooseDuties(a, f)
 	if err != nil {
+		return a.stop(err)
+	}
+	// Before anything else is asked or connected to: a selection the run can't
+	// honour should cost one question, not all of them.
+	if err := checkBlockDuties(duties, f.regen); err != nil {
 		return err
 	}
 
 	if f.regen && f.start == "" {
 		f.start, err = a.requireValue("Start date YYYY-MM-DD (rows from here on are deleted and rewritten)", "-start")
 		if err != nil {
-			return err
+			return a.stop(err)
 		}
 	}
 
@@ -179,9 +189,9 @@ func run(ctx context.Context, a *asker, f cliFlags) error {
 		f.weeks = a.intVal("Weeks of schedule per duty", f.weeks)
 	}
 
-	vacant, err := resolveVacant(f.vacant, a)
+	vacant, err := chooseVacant(a, f, duties)
 	if err != nil {
-		return err
+		return a.stop(err)
 	}
 
 	conn, err := db.Connect(ctx, config.Load().DatabaseURL)
@@ -198,10 +208,115 @@ func run(ctx context.Context, a *asker, f cliFlags) error {
 		regen:  f.regen,
 		dry:    f.dry,
 		style:  a.st,
+		out:    a.out,
 		confirm: func() bool {
-			return a.confirm("⚠  Write this to the " + a.st.danger("production") + " database in .env?")
+			return a.confirm("Write this to the " + a.st.danger("production") + " database in .env?")
 		},
+		finish: a.outro,
 	})
+}
+
+// chooseDuties resolves -duty, asking as a list when the flag wasn't given.
+// What comes pre-selected is exactly -duty's own default, so answering with
+// enter changes nothing.
+func chooseDuties(a *asker, f cliFlags) ([]schedule.DutyType, error) {
+	if f.given["duty"] {
+		return selectedDuties(f.duty)
+	}
+
+	all := generatable()
+	opts := make([]choice, len(all))
+	on := make([]bool, len(all))
+	for i, d := range all {
+		opts[i] = choice{key: string(d), label: d.Label()}
+		if isBlock(d) {
+			// Picking it here isn't the whole answer: seed still refuses it
+			// without the block's first Friday.
+			opts[i].hint = "needs -regen -start"
+		}
+		on[i] = !isBlock(d)
+	}
+
+	on, err := a.multiselect("Duties to seed", opts, on)
+	if err != nil {
+		return nil, err
+	}
+
+	var out []schedule.DutyType
+	for i, d := range all {
+		if on[i] {
+			out = append(out, d)
+		}
+	}
+	if len(out) == 0 {
+		return nil, errors.New("no duties selected")
+	}
+	return out, nil
+}
+
+// chooseVacant resolves -vacant. The list is every room that takes a turn at
+// one of the duties being seeded, which is the point of asking this way: a
+// wrong -vacant produces a schedule that looks entirely plausible and calls
+// the wrong people, and the numbers are easier to check on screen than from
+// memory.
+func chooseVacant(a *asker, f cliFlags, duties []schedule.DutyType) (map[int]bool, error) {
+	if f.given["vacant"] {
+		return parseVacant(f.vacant)
+	}
+
+	rooms := roomsIn(duties)
+	opts := make([]choice, len(rooms))
+	on := make([]bool, len(rooms))
+	for i, r := range rooms {
+		opts[i] = choice{key: strconv.Itoa(r), label: schedule.RoomNo(r)}
+	}
+
+	on, err := a.multiselect("Vacant rooms", opts, on)
+	if err != nil {
+		return nil, err
+	}
+
+	vacant := make(map[int]bool)
+	for i, r := range rooms {
+		if on[i] {
+			vacant[r] = true
+		}
+	}
+	return vacant, nil
+}
+
+// roomsIn is every room that appears in the rotation of any of duties, in
+// ascending order. The rotations themselves are ordered by turn rather than by
+// number, which is right for generating and wrong for a list to check against.
+func roomsIn(duties []schedule.DutyType) []int {
+	seen := make(map[int]bool)
+	var out []int
+	for _, d := range duties {
+		for _, r := range rotations[d] {
+			if !seen[r] {
+				seen[r] = true
+				out = append(out, r)
+			}
+		}
+	}
+	slices.Sort(out)
+	return out
+}
+
+func parseVacant(raw string) (map[int]bool, error) {
+	vacant := make(map[int]bool)
+	for _, part := range strings.Split(raw, ",") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		n, err := strconv.Atoi(part)
+		if err != nil {
+			return nil, fmt.Errorf("invalid vacant room %q", part)
+		}
+		vacant[n] = true
+	}
+	return vacant, nil
 }
 
 // seedConn is the slice of *pgx.Conn seed needs — one transaction. It lets
@@ -218,6 +333,11 @@ type seedParams struct {
 	regen  bool
 	dry    bool
 	style  style
+	// out is where the plan is printed; nil means os.Stdout.
+	out io.Writer
+	// finish prints the closing line — the asker's outro when there is a
+	// frame to close, a plain "seed: ..." otherwise.
+	finish func(msg string)
 	// confirm is asked once the whole plan has been printed and staged in the
 	// transaction, but before it is committed. nil means don't ask.
 	confirm func() bool
@@ -229,15 +349,19 @@ func seed(ctx context.Context, conn seedConn, p seedParams) error {
 	if p.regen && p.start == "" {
 		return fmt.Errorf("-regen requires -start")
 	}
-	// A block duty can't be continued on its own — the week its next block
-	// begins comes from the house. Without -regen, -start is ignored for a duty
-	// that already has rows and seeding would run straight on from the last
-	// block, filling in weeks that belong to the other floors.
-	for _, duty := range p.duties {
-		if isBlock(duty) && !p.regen {
-			return fmt.Errorf("%s: seed it with -regen -start <first Friday of the block>", duty)
-		}
+	if err := checkBlockDuties(p.duties, p.regen); err != nil {
+		return err
 	}
+
+	w := p.out
+	if w == nil {
+		w = os.Stdout
+	}
+	finish := p.finish
+	if finish == nil {
+		finish = func(msg string) { fmt.Fprintln(w, "seed:", msg) }
+	}
+	st := p.style
 
 	tx, err := conn.Begin(ctx)
 	if err != nil {
@@ -245,33 +369,37 @@ func seed(ctx context.Context, conn seedConn, p seedParams) error {
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
+	var totals []dutyTotal
 	for _, duty := range p.duties {
 		active := activeRooms(rotations[duty], p.vacant)
 		if len(active) == 0 {
-			fmt.Printf("%s: no occupied rooms, skipped\n", duty.Label())
+			fmt.Fprintf(w, "%s  %s  %s\n", st.rail(symBar), duty.Label(), st.warning("no occupied rooms, skipped"))
 			continue
 		}
 		block := isBlock(duty)
 		n := periods(p.weeks, duty)
+		note := ""
 		if block {
 			// Announce it: -weeks has no say here, and silently ignoring a flag
 			// the caller passed is how you end up trusting the wrong horizon.
 			n = len(active)
-			fmt.Printf("%s: block of %d weeks, one per occupied room (-weeks does not apply)\n", duty.Label(), n)
+			note = "block of one week per occupied room (-weeks does not apply)"
 		}
 		rows, err := planDuty(ctx, tx, duty, rotations[duty], active, n, p.start, p.regen, block)
 		if err != nil {
 			return err
 		}
+		if len(rows) == 0 {
+			continue
+		}
+
+		fmt.Fprintf(w, "%s  %s  %s\n", st.done(symBranch), st.current(duty.Label()), st.rail(fmt.Sprintf("%d rows", len(rows))))
+		if note != "" {
+			fmt.Fprintf(w, "%s  %s\n", st.rail(symBar), st.rail(note))
+		}
 		for _, r := range rows {
 			room := schedule.RoomNo(r.room)
-			// Pad before colouring: %-12s counts the escape bytes as width,
-			// so colouring first would leave the column short by however
-			// long the sequence is.
-			fmt.Printf("%s %s  %s\n",
-				p.style.duty(fmt.Sprintf("%-12s", duty)),
-				r.date.Format(dateLayout),
-				p.style.room(room))
+			fmt.Fprintf(w, "%s  %s  %s\n", st.rail(symBar), r.date.Format(dateLayout), st.room(room))
 			if p.dry {
 				continue
 			}
@@ -282,24 +410,110 @@ func seed(ctx context.Context, conn seedConn, p seedParams) error {
 				return fmt.Errorf("insert %s %s: %w", duty, r.date.Format(dateLayout), err)
 			}
 		}
+		fmt.Fprintf(w, "%s\n", st.rail(symBar))
+		totals = append(totals, dutyTotal{
+			duty: duty,
+			rows: len(rows),
+			from: rows[0].date,
+			to:   rows[len(rows)-1].date,
+		})
 	}
 
+	// The totals go last and stay on screen: with hundreds of rows scrolled
+	// past, this is what the confirmation is actually answered against.
+	printTotals(w, st, totals)
+
 	if p.dry {
-		fmt.Println("seed: dry run, nothing written")
+		finish("dry run, nothing written")
 		return nil
 	}
 	// Everything above is already staged in the transaction, so declining here
 	// costs nothing: the deferred Rollback undoes it. That turns "always run
 	// -dry first" from a habit into something the tool enforces.
 	if p.confirm != nil && !p.confirm() {
-		fmt.Println("seed: cancelled, nothing written")
+		finish("cancelled, nothing written")
 		return nil
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return err
 	}
-	fmt.Println("seed: done")
+	finish("done")
 	return nil
+}
+
+// checkBlockDuties enforces the two rules a block duty brings with it. It
+// lives in one place so run can apply it before it asks anything else or opens
+// a connection, and seed can apply it again whoever called it.
+//
+// A block duty can't be continued on its own: the week its next block begins
+// comes from the house, and without -regen, -start is ignored for a duty that
+// already has rows — seeding would run straight on from the last block and
+// fill in weeks belonging to the other floors.
+//
+// It also can't share a run. -regen deletes from -start forward for every duty
+// in the run, so pairing the staircase with the in-flat duties would silently
+// drop months of their schedule from the block's start date. No run means
+// that, which is why this is refused rather than confirmed.
+func checkBlockDuties(duties []schedule.DutyType, regen bool) error {
+	var block, other []schedule.DutyType
+	for _, d := range duties {
+		if isBlock(d) {
+			block = append(block, d)
+		} else {
+			other = append(other, d)
+		}
+	}
+	if len(block) == 0 {
+		return nil
+	}
+	if len(other) > 0 {
+		return fmt.Errorf("%s is seeded on its own: it runs with -regen, which would delete %s from -start forward too",
+			dutyList(block), dutyList(other))
+	}
+	if !regen {
+		return fmt.Errorf("%s: seed it with -regen -start <first Friday of the block>", dutyList(block))
+	}
+	return nil
+}
+
+// dutyTotal is one line of the summary: what a duty got, and the span it
+// covers.
+type dutyTotal struct {
+	duty schedule.DutyType
+	rows int
+	from time.Time
+	to   time.Time
+}
+
+func printTotals(w io.Writer, st style, totals []dutyTotal) {
+	if len(totals) == 0 {
+		return
+	}
+	width := 0
+	for _, t := range totals {
+		if n := len([]rune(t.duty.Label())); n > width {
+			width = n
+		}
+	}
+
+	fmt.Fprintf(w, "%s  %s\n", st.done(symBranch), st.current("plan"))
+	sum := 0
+	for _, t := range totals {
+		sum += t.rows
+		// Pad before colouring: %-*s counts the escape bytes as width, so
+		// colouring first would leave the column short by the sequence.
+		fmt.Fprintf(w, "%s  %s  %4d  %s → %s\n",
+			st.rail(symBar),
+			st.duty(fmt.Sprintf("%-*s", width, t.duty.Label())),
+			t.rows,
+			t.from.Format(dateLayout),
+			t.to.Format(dateLayout))
+	}
+	fmt.Fprintf(w, "%s  %s  %4d\n%s\n",
+		st.rail(symBar),
+		st.rail(fmt.Sprintf("%-*s", width, "total")),
+		sum,
+		st.rail(symBar))
 }
 
 type plannedRow struct {
@@ -474,34 +688,6 @@ func nextActiveIndex(rotation, active []int, lastRoom int) int {
 		}
 	}
 	return 0
-}
-
-func resolveVacant(flagVal string, a *asker) (map[int]bool, error) {
-	raw := flagVal
-	if raw == "" {
-		raw = a.line("Vacant room numbers (comma-separated, empty = all occupied)", "")
-	}
-	vacant := make(map[int]bool)
-	if raw == "" {
-		return vacant, nil
-	}
-	for _, part := range strings.Split(raw, ",") {
-		n, err := strconv.Atoi(strings.TrimSpace(part))
-		if err != nil {
-			return nil, fmt.Errorf("invalid vacant room %q", part)
-		}
-		vacant[n] = true
-	}
-	return vacant, nil
-}
-
-// dutyNames renders a duty list for a prompt.
-func dutyNames(duties []schedule.DutyType) string {
-	names := make([]string, len(duties))
-	for i, d := range duties {
-		names[i] = string(d)
-	}
-	return strings.Join(names, ",")
 }
 
 // allBlock reports whether every duty selected is seeded a block at a time,

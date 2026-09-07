@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"errors"
+	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -303,5 +305,204 @@ func TestSeedRejectsHallWithoutRegen(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("expected an error: hall cannot be continued without -regen")
+	}
+}
+
+// The rotations are ordered by turn, which is right for generating and wrong
+// for a list to check yourself against: 8 comes first in the laundry rotation,
+// and nobody looks for it there.
+func TestRoomsIn(t *testing.T) {
+	got := roomsIn([]schedule.DutyType{schedule.DutyTypeLaundry})
+	want := []int{1, 2, 3, 4, 5, 6, 7, 8}
+	if !slices.Equal(got, want) {
+		t.Errorf("got %v, want %v", got, want)
+	}
+
+	// Two duties that overlap must not list a room twice.
+	got = roomsIn([]schedule.DutyType{schedule.DutyTypeToilet1, schedule.DutyTypeToilet2})
+	want = []int{1, 2, 3, 4, 5, 6, 7, 8}
+	if !slices.Equal(got, want) {
+		t.Errorf("got %v, want %v", got, want)
+	}
+}
+
+func TestParseVacant(t *testing.T) {
+	t.Run("numbers become a set", func(t *testing.T) {
+		got, err := parseVacant("2, 6")
+		if err != nil {
+			t.Fatalf("parseVacant: %v", err)
+		}
+		if !got[2] || !got[6] || len(got) != 2 {
+			t.Errorf("got %v, want rooms 2 and 6", got)
+		}
+	})
+
+	t.Run("an empty list is nobody", func(t *testing.T) {
+		got, err := parseVacant("")
+		if err != nil || len(got) != 0 {
+			t.Errorf("got %v, %v; want an empty set", got, err)
+		}
+	})
+
+	t.Run("a non-number is an error", func(t *testing.T) {
+		if _, err := parseVacant("2,zwei"); err == nil {
+			t.Error("got nil, want an error")
+		}
+	})
+}
+
+// The flag is the whole answer when it was typed — the list must not reopen a
+// question the command line already settled.
+func TestChooseDutiesPrefersTheFlag(t *testing.T) {
+	a, out := newTestAsker("", true)
+	f := cliFlags{duty: "laundry", given: map[string]bool{"duty": true}}
+
+	got, err := chooseDuties(a, f)
+	if err != nil {
+		t.Fatalf("chooseDuties: %v", err)
+	}
+	if len(got) != 1 || got[0] != schedule.DutyTypeLaundry {
+		t.Errorf("got %v, want just laundry", got)
+	}
+	if out.String() != "" {
+		t.Errorf("printed %q; -duty was given, so there was nothing to ask", out.String())
+	}
+}
+
+// Answering with enter has to mean what omitting -duty has always meant.
+func TestChooseDutiesDefaultsToTheSameSetAsTheFlag(t *testing.T) {
+	a, _ := newTestAsker("\n", true)
+
+	got, err := chooseDuties(a, cliFlags{given: map[string]bool{}})
+	if err != nil {
+		t.Fatalf("chooseDuties: %v", err)
+	}
+	if !slices.Equal(got, defaultDuties()) {
+		t.Errorf("got %v, want %v", got, defaultDuties())
+	}
+}
+
+// Deselecting everything is not a run with nothing to do — it's a question
+// that wasn't answered, and seeding nothing silently would look like success.
+func TestChooseDutiesRejectsAnEmptySelection(t *testing.T) {
+	// A lone comma clears the pre-selection without being an empty answer,
+	// which would mean "keep the defaults".
+	a, _ := newTestAsker(",\n", true)
+
+	if _, err := chooseDuties(a, cliFlags{given: map[string]bool{}}); err == nil {
+		t.Error("got nil, want an error for a run with no duties")
+	}
+}
+
+func TestChooseVacantPrefersTheFlag(t *testing.T) {
+	a, out := newTestAsker("", true)
+	f := cliFlags{vacant: "2,6", given: map[string]bool{"vacant": true}}
+
+	got, err := chooseVacant(a, f, defaultDuties())
+	if err != nil {
+		t.Fatalf("chooseVacant: %v", err)
+	}
+	if !got[2] || !got[6] || len(got) != 2 {
+		t.Errorf("got %v, want rooms 2 and 6", got)
+	}
+	if out.String() != "" {
+		t.Errorf("printed %q; -vacant was given", out.String())
+	}
+}
+
+// The list is keyed by room number, so what you type into the fallback is what
+// you would have passed to -vacant.
+func TestChooseVacantByTypedRoomNumbers(t *testing.T) {
+	a, _ := newTestAsker("2,6\n", true)
+
+	got, err := chooseVacant(a, cliFlags{given: map[string]bool{}}, defaultDuties())
+	if err != nil {
+		t.Fatalf("chooseVacant: %v", err)
+	}
+	if !got[2] || !got[6] || len(got) != 2 {
+		t.Errorf("got %v, want rooms 2 and 6", got)
+	}
+}
+
+// -regen deletes from -start forward for every duty in the run, and a block
+// duty is always seeded with -regen. Combining the two would drop months of
+// the in-flat schedule from the staircase block's start date — quietly, since
+// the plan would look perfectly ordinary.
+func TestCheckBlockDuties(t *testing.T) {
+	hall := schedule.DutyTypeHall
+	cases := []struct {
+		name   string
+		duties []schedule.DutyType
+		regen  bool
+		wantIn string
+	}{
+		{"the in-flat duties are fine together", defaultDuties(), false, ""},
+		{"a block duty alone with -regen is the normal way", []schedule.DutyType{hall}, true, ""},
+		{"a block duty alone without -regen is refused", []schedule.DutyType{hall}, false, "-regen -start"},
+		{
+			"a block duty may not share a run, even with -regen",
+			[]schedule.DutyType{hall, schedule.DutyTypeLaundry}, true,
+			"on its own",
+		},
+		{
+			"nor without it",
+			[]schedule.DutyType{hall, schedule.DutyTypeLaundry}, false,
+			"on its own",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := checkBlockDuties(tc.duties, tc.regen)
+			if tc.wantIn == "" {
+				if err != nil {
+					t.Fatalf("got %v, want nil", err)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatalf("got nil, want an error mentioning %q", tc.wantIn)
+			}
+			if !strings.Contains(err.Error(), tc.wantIn) {
+				t.Errorf("error should mention %q: %v", tc.wantIn, err)
+			}
+		})
+	}
+}
+
+// The refusal has to name the duties on both sides, or it doesn't say which
+// selection to change.
+func TestCheckBlockDutiesNamesBothSides(t *testing.T) {
+	err := checkBlockDuties([]schedule.DutyType{schedule.DutyTypeHall, schedule.DutyTypeFloor}, true)
+	if err == nil {
+		t.Fatal("got nil, want an error")
+	}
+	for _, want := range []string{"hall", "floor"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error should name %q: %v", want, err)
+		}
+	}
+}
+
+// The CLI must refuse before it asks the remaining questions or opens a
+// connection: a selection that can't be honoured should cost one question,
+// not all of them.
+func TestRunRefusesAMixedSelectionBeforeAskingOn(t *testing.T) {
+	a, out := newTestAsker("", true)
+	f := cliFlags{
+		duty:  "hall,laundry",
+		start: "2026-11-06",
+		regen: true,
+		given: map[string]bool{"duty": true, "start": true, "regen": true},
+	}
+
+	err := run(context.Background(), a, f)
+	if err == nil {
+		t.Fatal("got nil, want a refusal")
+	}
+	if !strings.Contains(err.Error(), "on its own") {
+		t.Errorf("unexpected error: %v", err)
+	}
+	if strings.Contains(out.String(), "Vacant rooms") {
+		t.Errorf("the run asked on past the refusal:\n%s", out.String())
 	}
 }
