@@ -675,3 +675,28 @@ func TestMultiselectRawPathReturnsTheCarriage(t *testing.T) {
 		t.Error("the CRLF writer outlived the raw mode it was installed for")
 	}
 }
+
+// Without a frame around it, a closing line carries the command's name — which
+// the prompts are told rather than know. Nothing else here is aware of which
+// command it draws for.
+func TestOutroNamesTheCommandOnlyWhenToldTo(t *testing.T) {
+	t.Run("named", func(t *testing.T) {
+		var out strings.Builder
+		a := &asker{out: &out, name: "migrate"}
+
+		a.outro("done")
+		if got, want := out.String(), "migrate: done\n"; got != want {
+			t.Errorf("got %q, want %q", got, want)
+		}
+	})
+
+	t.Run("unnamed", func(t *testing.T) {
+		var out strings.Builder
+		a := &asker{out: &out}
+
+		a.cancelled("cancelled, nothing written")
+		if got, want := out.String(), "cancelled, nothing written\n"; got != want {
+			t.Errorf("got %q, want %q", got, want)
+		}
+	})
+}

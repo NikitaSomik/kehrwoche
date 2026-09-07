@@ -146,7 +146,7 @@ func main() {
 		dry:    *dry,
 		given:  given,
 	}
-	if err := run(context.Background(), newAsker(), f); err != nil {
+	if err := run(context.Background(), newAsker("seed"), f); err != nil {
 		// A cancelled run has already said so inside the frame; anything
 		// else is a failure, and stderr is where a failure belongs.
 		if !errors.Is(err, errCancelled) {

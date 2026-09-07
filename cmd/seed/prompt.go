@@ -31,6 +31,10 @@ type asker struct {
 	// finished prompt into its answer means moving the cursor back over it, so
 	// a redirected stdout gets the plain, additive form instead.
 	redraw bool
+	// name goes in front of a closing line printed without the frame, the way
+	// a command's output reads in a log. Nothing else here knows which command
+	// it is drawing for, and this is how it stays that way.
+	name string
 	// width is the terminal's, or 0 when unknown. Rewinding counts the lines
 	// printed, and the terminal counts the lines displayed; a line too long to
 	// fit becomes two of the latter and one of the former, and the redraw then
@@ -42,9 +46,11 @@ type asker struct {
 }
 
 // newAsker reads the terminal, if this is one. Deciding once here means the
-// prompts don't each have to wonder.
-func newAsker() *asker {
+// prompts don't each have to wonder. name is the command's, used only when
+// there is no frame to close.
+func newAsker(name string) *asker {
 	return &asker{
+		name:        name,
 		in:          bufio.NewReader(os.Stdin),
 		out:         os.Stdout,
 		tty:         os.Stdin,
@@ -69,10 +75,19 @@ func (a *asker) intro(title string) {
 	a.printf("%s  %s\n%s\n", a.st.success(symIntro), a.st.strong(title), a.st.muted(symBar))
 }
 
+// plain reports a line for a run with no frame around it: the command's name,
+// then the message, the way its output reads in a log.
+func (a *asker) plain(msg string) {
+	if a.name != "" {
+		msg = a.name + ": " + msg
+	}
+	fmt.Fprintln(a.out, msg)
+}
+
 // outro closes it.
 func (a *asker) outro(msg string) {
 	if !a.interactive {
-		fmt.Fprintln(a.out, "seed:", msg)
+		a.plain(msg)
 		return
 	}
 	// No leading rail here: every block that can precede this one — an
@@ -83,7 +98,7 @@ func (a *asker) outro(msg string) {
 // cancelled closes it on the unhappy path, in a colour that says so.
 func (a *asker) cancelled(msg string) {
 	if !a.interactive {
-		fmt.Fprintln(a.out, "seed:", msg)
+		a.plain(msg)
 		return
 	}
 	a.printf("%s  %s\n", a.st.danger(symStop), a.st.warning(msg))
