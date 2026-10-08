@@ -8,6 +8,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 // fakeRow implements pgx.Row for GetOnDuty tests.
@@ -66,6 +67,11 @@ func (r *fakeRows) FieldDescriptions() []pgconn.FieldDescription { return nil }
 func (r *fakeRows) Values() ([]any, error)                       { return nil, nil }
 func (r *fakeRows) RawValues() [][]byte                          { return nil }
 func (r *fakeRows) Conn() *pgx.Conn                              { return nil }
+
+// TypeMap is pgx.Rows as of v5.11. nil is a documented answer for a Rows
+// that carries no values — the same reason Conn, Values and RawValues
+// are nil here: nothing in these tests decodes through pgtype.
+func (r *fakeRows) TypeMap() *pgtype.Map { return nil }
 
 func (r *fakeRows) Next() bool {
 	if r.pos >= len(r.data) {

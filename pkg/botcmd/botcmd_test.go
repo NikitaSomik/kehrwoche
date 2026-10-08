@@ -10,6 +10,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/NikitaSomik/kehrwoche/pkg/schedule"
 )
@@ -45,6 +46,11 @@ func (r *fakeRows) RawValues() [][]byte                          { return nil }
 func (r *fakeRows) Conn() *pgx.Conn                              { return nil }
 func (r *fakeRows) Next() bool                                   { return false }
 func (r *fakeRows) Scan(dest ...any) error                       { return nil }
+
+// TypeMap is pgx.Rows as of v5.11. nil is a documented answer for a Rows
+// that carries no values — the same reason Conn, Values and RawValues
+// are nil here: nothing in these tests decodes through pgtype.
+func (r *fakeRows) TypeMap() *pgtype.Map { return nil }
 
 type fakeQuerier struct {
 	row fakeRow
