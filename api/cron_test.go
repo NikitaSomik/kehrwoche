@@ -95,23 +95,23 @@ func TestCron_ValidSecret_DBError(t *testing.T) {
 	}
 }
 
-// stubSendAdmin replaces the Bot API call for the duration of a test and
+// stubSendPlain replaces the Bot API call for the duration of a test and
 // records what would have been sent.
-func stubSendAdmin(t *testing.T) *[]string {
+func stubSendPlain(t *testing.T) *[]string {
 	t.Helper()
 	var sent []string
-	prev := sendAdmin
-	sendAdmin = func(ctx context.Context, c *http.Client, token string, chatID int64, text string) error {
+	prev := sendPlain
+	sendPlain = func(ctx context.Context, c *http.Client, token string, chatID int64, text string) error {
 		sent = append(sent, text)
 		return nil
 	}
-	t.Cleanup(func() { sendAdmin = prev })
+	t.Cleanup(func() { sendPlain = prev })
 	return &sent
 }
 
 func TestReportProblems(t *testing.T) {
 	t.Run("reaches the admin as one message", func(t *testing.T) {
-		sent := stubSendAdmin(t)
+		sent := stubSendPlain(t)
 		cfg := config.Config{AdminChatID: "456"}
 
 		reportProblems(context.Background(), cfg, "Etage: Plan nicht lesbar", "Erinnerung nicht zustellbar")
@@ -129,7 +129,7 @@ func TestReportProblems(t *testing.T) {
 	// The notice is opt-in; without a chat to send it to there is nothing to
 	// do, and it must never fall back to the group.
 	t.Run("no admin chat, nothing sent", func(t *testing.T) {
-		sent := stubSendAdmin(t)
+		sent := stubSendPlain(t)
 
 		reportProblems(context.Background(), config.Config{}, "something broke")
 
@@ -139,7 +139,7 @@ func TestReportProblems(t *testing.T) {
 	})
 
 	t.Run("nothing wrong, nothing sent", func(t *testing.T) {
-		sent := stubSendAdmin(t)
+		sent := stubSendPlain(t)
 
 		reportProblems(context.Background(), config.Config{AdminChatID: "456"})
 
@@ -149,7 +149,7 @@ func TestReportProblems(t *testing.T) {
 	})
 
 	t.Run("unparseable admin chat sends nothing", func(t *testing.T) {
-		sent := stubSendAdmin(t)
+		sent := stubSendPlain(t)
 		cfg := config.Config{AdminChatID: "not-a-number"}
 
 		reportProblems(context.Background(), cfg, "something broke")
@@ -201,7 +201,7 @@ func TestHorizonProblems(t *testing.T) {
 	cfg := config.Config{AdminChatID: "123"}
 
 	t.Run("reminder day checks and warns", func(t *testing.T) {
-		sent := stubSendAdmin(t)
+		sent := stubSendPlain(t)
 		q := &horizonQuerier{t: t, last: &near}
 
 		if got := horizonProblems(context.Background(), q, cfg, thursday); got != nil {
@@ -213,7 +213,7 @@ func TestHorizonProblems(t *testing.T) {
 	})
 
 	t.Run("any other day leaves the DB alone", func(t *testing.T) {
-		sent := stubSendAdmin(t)
+		sent := stubSendPlain(t)
 		q := &horizonQuerier{t: t, last: &near}
 
 		if got := horizonProblems(context.Background(), q, cfg, friday); got != nil {
@@ -266,7 +266,7 @@ func TestWarnHorizon(t *testing.T) {
 	})
 
 	t.Run("running out reaches the admin", func(t *testing.T) {
-		sent := stubSendAdmin(t)
+		sent := stubSendPlain(t)
 		q := &horizonQuerier{t: t, last: &near}
 		cfg := config.Config{AdminChatID: "123"}
 
@@ -279,7 +279,7 @@ func TestWarnHorizon(t *testing.T) {
 	})
 
 	t.Run("schedule already over still warns", func(t *testing.T) {
-		sent := stubSendAdmin(t)
+		sent := stubSendPlain(t)
 		past := now.AddDate(0, 0, -3)
 		q := &horizonQuerier{t: t, last: &past}
 		cfg := config.Config{AdminChatID: "123"}
@@ -294,11 +294,11 @@ func TestWarnHorizon(t *testing.T) {
 
 	t.Run("failed send is an error", func(t *testing.T) {
 		wantErr := errors.New("telegram down")
-		prev := sendAdmin
-		sendAdmin = func(ctx context.Context, c *http.Client, token string, chatID int64, text string) error {
+		prev := sendPlain
+		sendPlain = func(ctx context.Context, c *http.Client, token string, chatID int64, text string) error {
 			return wantErr
 		}
-		t.Cleanup(func() { sendAdmin = prev })
+		t.Cleanup(func() { sendPlain = prev })
 		q := &horizonQuerier{t: t, last: &near}
 		cfg := config.Config{AdminChatID: "123"}
 

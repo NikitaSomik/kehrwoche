@@ -146,22 +146,24 @@ func reportProblems(ctx context.Context, cfg config.Config, problems ...string) 
 	if cfg.AdminChatID == "" || len(problems) == 0 {
 		return
 	}
-	adminID, err := strconv.ParseInt(cfg.AdminChatID, 10, 64)
-	if err != nil {
-		log.Printf("cron: invalid ADMIN_CHAT_ID: %v", err)
-		return
-	}
-
-	// SendPlain, not Send: the error texts are arbitrary and would trip
-	// Markdown parsing.
-	if err := sendAdmin(ctx, http.DefaultClient, cfg.TelegramToken, adminID, adminNotice(problems)); err != nil {
-		log.Printf("cron: notify admin: %v", err)
+	if err := sendToAdmin(ctx, cfg, adminNotice(problems)); err != nil {
+		log.Printf("cron: report problems: %v", err)
 	}
 }
 
-// sendAdmin is the delivery half of reportProblems, a variable so tests can
-// substitute one instead of reaching the Bot API.
-var sendAdmin = telegram.SendPlain
+// sendToAdmin delivers text to ADMIN_CHAT_ID. SendPlain, not Send: error texts
+// are arbitrary and would trip Markdown parsing.
+func sendToAdmin(ctx context.Context, cfg config.Config, text string) error {
+	adminID, err := strconv.ParseInt(cfg.AdminChatID, 10, 64)
+	if err != nil {
+		return fmt.Errorf("invalid ADMIN_CHAT_ID: %w", err)
+	}
+	return sendPlain(ctx, http.DefaultClient, cfg.TelegramToken, adminID, text)
+}
+
+// sendPlain is telegram.SendPlain, a variable so tests can substitute one
+// instead of reaching the Bot API.
+var sendPlain = telegram.SendPlain
 
 // adminNotice renders the problems as one message.
 func adminNotice(problems []string) string {
@@ -206,9 +208,5 @@ func warnHorizon(ctx context.Context, conn schedule.Querier, cfg config.Config, 
 	if text == "" {
 		return nil
 	}
-	adminID, err := strconv.ParseInt(cfg.AdminChatID, 10, 64)
-	if err != nil {
-		return fmt.Errorf("invalid ADMIN_CHAT_ID: %w", err)
-	}
-	return sendAdmin(ctx, http.DefaultClient, cfg.TelegramToken, adminID, text)
+	return sendToAdmin(ctx, cfg, text)
 }
