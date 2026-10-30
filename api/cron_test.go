@@ -109,12 +109,12 @@ func stubSendAdmin(t *testing.T) *[]string {
 	return &sent
 }
 
-func TestNotifyAdmin(t *testing.T) {
+func TestReportProblems(t *testing.T) {
 	t.Run("reaches the admin as one message", func(t *testing.T) {
 		sent := stubSendAdmin(t)
 		cfg := config.Config{AdminChatID: "456"}
 
-		notifyAdmin(context.Background(), cfg, "Etage: Plan nicht lesbar", "Erinnerung nicht zustellbar")
+		reportProblems(context.Background(), cfg, "Etage: Plan nicht lesbar", "Erinnerung nicht zustellbar")
 
 		if len(*sent) != 1 {
 			t.Fatalf("got %d messages, want 1 covering both problems", len(*sent))
@@ -131,7 +131,7 @@ func TestNotifyAdmin(t *testing.T) {
 	t.Run("no admin chat, nothing sent", func(t *testing.T) {
 		sent := stubSendAdmin(t)
 
-		notifyAdmin(context.Background(), config.Config{}, "something broke")
+		reportProblems(context.Background(), config.Config{}, "something broke")
 
 		if len(*sent) != 0 {
 			t.Errorf("sent %v, want nothing", *sent)
@@ -141,7 +141,7 @@ func TestNotifyAdmin(t *testing.T) {
 	t.Run("nothing wrong, nothing sent", func(t *testing.T) {
 		sent := stubSendAdmin(t)
 
-		notifyAdmin(context.Background(), config.Config{AdminChatID: "456"})
+		reportProblems(context.Background(), config.Config{AdminChatID: "456"})
 
 		if len(*sent) != 0 {
 			t.Errorf("sent %v, want nothing", *sent)
@@ -152,7 +152,7 @@ func TestNotifyAdmin(t *testing.T) {
 		sent := stubSendAdmin(t)
 		cfg := config.Config{AdminChatID: "not-a-number"}
 
-		notifyAdmin(context.Background(), cfg, "something broke")
+		reportProblems(context.Background(), cfg, "something broke")
 
 		if len(*sent) != 0 {
 			t.Errorf("sent %v, want nothing", *sent)
