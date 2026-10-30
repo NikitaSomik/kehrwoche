@@ -71,34 +71,30 @@ func generatable() []schedule.DutyType {
 }
 
 // defaultDuties is what runs when -duty is omitted: everything generatable
-// that isn't a block duty. Treppenhaus is left out on purpose — its weeks are
+// that isn't a block duty (schedule.IsBlock). Treppenhaus is left out on purpose — its weeks are
 // handed to us by the house a block at a time, so extending it by the same
 // horizon as the rest would invent dates we don't own. It has to be asked for
 // by name.
 func defaultDuties() []schedule.DutyType {
 	out := make([]schedule.DutyType, 0, len(rotations))
 	for _, d := range generatable() {
-		if !isBlock(d) {
+		if !schedule.IsBlock(d) {
 			out = append(out, d)
 		}
 	}
 	return out
 }
 
-// isBlock reports whether a duty is seeded one complete pass at a time instead
-// of on a rolling horizon. The staircase rotates between the floors of the
-// house: when our turn comes round, every occupied room takes one week in
-// order, and then the next floor takes over. So the block is exactly as long
-// as there are occupied rooms, and it always restarts at the first of them —
-// -weeks and the carry-over from the previous block don't apply.
-func isBlock(d schedule.DutyType) bool {
-	return d == schedule.DutyTypeHall
-}
-
 // exitInterrupted is what a shell reports for a program stopped by SIGINT:
 // 128 plus the signal number. Ctrl+C reaches the prompts as a byte rather than
 // a signal, so nothing sets this for us.
 const exitInterrupted = 130
+
+// defaultWeeks is how far one top-up reaches. Short on purpose: the occupied
+// rooms are re-stated at every run and stored nowhere, so a stale -vacant can
+// only mislead until the next one. It is separate from schedule.HorizonWeeks,
+// which says when to top up rather than by how much.
+const defaultWeeks = 8
 
 const dateLayout = "2006-01-02"
 
@@ -130,7 +126,7 @@ func periods(weeks int, d schedule.DutyType) int {
 
 func main() {
 	dutyStr := flag.String("duty", "", "comma-separated duties to target (default: every duty except hall, which must be named explicitly)")
-	weeks := flag.Int("weeks", 26, "weeks of schedule to generate per duty (laundry runs twice a week, so it gets twice the rows; ignored for hall, whose block length is the number of occupied rooms)")
+	weeks := flag.Int("weeks", defaultWeeks, "weeks of schedule to generate per duty (laundry runs twice a week, so it gets twice the rows; ignored for hall, whose block length is the number of occupied rooms)")
 	startStr := flag.String("start", "", "start date YYYY-MM-DD (required for a duty with no rows yet, or with -regen)")
 	vacantStr := flag.String("vacant", "", "comma-separated vacant room numbers (omit to be prompted)")
 	regen := flag.Bool("regen", false, "delete existing rows from -start forward, then regenerate (use after a move-out)")
@@ -267,7 +263,7 @@ func chooseDuties(a *asker, f cliFlags) ([]schedule.DutyType, error) {
 	on := make([]bool, len(all))
 	for i, d := range all {
 		opts[i] = choice{key: string(d), label: d.Label()}
-		if isBlock(d) {
+		if schedule.IsBlock(d) {
 			// It replaces a block rather than extending a horizon, so it can
 			// neither share the run nor be seeded without -regen. The list
 			// enforces the first by clearing the other side; autoRegen
@@ -276,7 +272,7 @@ func chooseDuties(a *asker, f cliFlags) ([]schedule.DutyType, error) {
 			opts[i].exclusive = true
 			opts[i].hint = "runs on its own, replaces a block"
 		}
-		on[i] = !isBlock(d)
+		on[i] = !schedule.IsBlock(d)
 	}
 
 	on, err := a.multiselect("Duties to seed", opts, on)
@@ -419,7 +415,7 @@ func seed(ctx context.Context, conn seedConn, p seedParams) error {
 			fmt.Fprintf(w, "%s  %s  %s\n", st.muted(symBar), duty.Label(), st.warning("no occupied rooms, skipped"))
 			continue
 		}
-		block := isBlock(duty)
+		block := schedule.IsBlock(duty)
 		n := periods(p.weeks, duty)
 		note := ""
 		if block {
@@ -512,7 +508,7 @@ func seed(ctx context.Context, conn seedConn, p seedParams) error {
 func checkBlockDuties(duties []schedule.DutyType, regen bool) error {
 	var block, other []schedule.DutyType
 	for _, d := range duties {
-		if isBlock(d) {
+		if schedule.IsBlock(d) {
 			block = append(block, d)
 		} else {
 			other = append(other, d)
@@ -642,7 +638,7 @@ type plannedRow struct {
 }
 
 // restart makes the run begin at the first occupied room instead of carrying
-// on from the last assignment — see isBlock.
+// on from the last assignment — see schedule.IsBlock.
 func planDuty(ctx context.Context, tx txQuerier, duty schedule.DutyType, rotation, active []int, n int, startStr string, regen, restart bool) ([]plannedRow, error) {
 	var date time.Time
 	var idx int
@@ -814,7 +810,7 @@ func nextActiveIndex(rotation, active []int, lastRoom int) int {
 // which is when -weeks stops meaning anything.
 func allBlock(duties []schedule.DutyType) bool {
 	for _, d := range duties {
-		if !isBlock(d) {
+		if !schedule.IsBlock(d) {
 			return false
 		}
 	}

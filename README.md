@@ -107,7 +107,13 @@ the commit is gone, since forks and caches keep it.
 ## Regenerating the schedule
 
 `cmd/seed` fills the `schedules` table. `-weeks` is the horizon per duty
-(laundry runs twice a week, so it gets twice the rows). Always dry-run first.
+(laundry runs twice a week, so it gets twice the rows), defaulting to 8.
+Always dry-run first.
+
+The cron warns with `schedule.HorizonWeeks` (4) left, so a top-up of 8 keeps
+roughly one to three months planned ahead. That is deliberately short: which
+rooms are occupied is passed in on every run and stored nowhere, so a stale
+`-vacant` can only mislead until the next top-up.
 
 Run it with no flags and it asks: which duties, how many weeks, which rooms are
 empty — then prints the plan and waits for a yes before writing. Any flag you
@@ -149,13 +155,19 @@ the flag it can't do without.
 
 ```bash
 task seed                                                    # ask for everything
-task seed -- -dry                                            # continue every duty, 26 weeks
+task seed -- -dry                                            # continue every duty, 8 weeks
 task seed -- -vacant 1,6 -regen -start 2026-08-28 -dry       # rewrite the future after a move-out
 task seed -- -duty laundry -weeks 12 -regen -start 2026-09-04 -dry
 ```
 
 `-regen` deletes rows from `-start` forward and rewrites them, continuing the
 rotation from the last surviving row. Without `-regen` it only appends.
+
+You don't have to remember to do this: once a week the cron checks how far
+ahead each rolling-horizon duty is planned and, with `ADMIN_CHAT_ID` set,
+messages that chat privately when one is within `schedule.HorizonWeeks` of
+running out. Unset, the notice is simply skipped — it never falls back to the
+group chat, since only whoever runs `cmd/seed` can act on it.
 
 ### Treppenhaus
 

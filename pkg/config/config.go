@@ -12,7 +12,8 @@ type Config struct {
 	CronSecret    string
 	ChatID        string
 	// AdminChatID receives operational notices — a cron run that could not do
-	// its job — that only the maintainer can act on. Empty disables them
+	// its job, the schedule running out — that only the maintainer can act on.
+	// Empty disables them
 	// rather than falling back to the group chat.
 	AdminChatID string
 }
