@@ -119,14 +119,7 @@ func Cron(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Once a week rather than on every run, and privately: only whoever runs
-	// cmd/seed can act on it, so the group chat would just be noise. A failure
-	// here is logged, never allowed to fail the reminder itself.
-	if now.Weekday() == weeklyReminderDay {
-		if err := warnHorizon(ctx, conn, cfg, now); err != nil {
-			log.Printf("cron: horizon: %v", err)
-		}
-	}
+	problems = append(problems, horizonProblems(ctx, conn, cfg, now)...)
 
 	if len(problems) > 0 {
 		reportProblems(ctx, cfg, problems...)
@@ -178,6 +171,23 @@ func adminNotice(problems []string) string {
 		fmt.Fprintf(&b, "\n• %s", p)
 	}
 	return b.String()
+}
+
+// horizonProblems runs warnHorizon on the weekly reminder day and returns what
+// went wrong, if anything. Once a week rather than on every run, and privately:
+// only whoever runs cmd/seed can act on it, so the group chat would just be
+// noise. The reminder has already gone out by now, so a failure here can't cost
+// it; it joins the run's problems because a check that fails silently is the
+// shortage it exists to catch.
+func horizonProblems(ctx context.Context, conn schedule.Querier, cfg config.Config, now time.Time) []string {
+	if now.Weekday() != weeklyReminderDay {
+		return nil
+	}
+	if err := warnHorizon(ctx, conn, cfg, now); err != nil {
+		log.Printf("cron: horizon: %v", err)
+		return []string{fmt.Sprintf("Putzplan nicht prüfbar: %v", err)}
+	}
+	return nil
 }
 
 // warnHorizon messages the admin when a rolling-horizon duty is about to run

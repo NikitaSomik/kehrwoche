@@ -194,6 +194,48 @@ func (r horizonRow) Scan(dest ...any) error {
 	return nil
 }
 
+func TestHorizonProblems(t *testing.T) {
+	thursday := time.Date(2026, 9, 10, 12, 0, 0, 0, time.UTC)
+	friday := thursday.AddDate(0, 0, 1)
+	near := thursday.AddDate(0, 0, 7)
+	cfg := config.Config{AdminChatID: "123"}
+
+	t.Run("reminder day checks and warns", func(t *testing.T) {
+		sent := stubSendAdmin(t)
+		q := &horizonQuerier{t: t, last: &near}
+
+		if got := horizonProblems(context.Background(), q, cfg, thursday); got != nil {
+			t.Errorf("got problems %v, want none", got)
+		}
+		if len(*sent) != 1 {
+			t.Errorf("got %d messages, want 1", len(*sent))
+		}
+	})
+
+	t.Run("any other day leaves the DB alone", func(t *testing.T) {
+		sent := stubSendAdmin(t)
+		q := &horizonQuerier{t: t, last: &near}
+
+		if got := horizonProblems(context.Background(), q, cfg, friday); got != nil {
+			t.Errorf("got problems %v, want none", got)
+		}
+		if q.calls != 0 || len(*sent) != 0 {
+			t.Errorf("got %d queries and %d messages, want neither", q.calls, len(*sent))
+		}
+	})
+
+	// A failed check must surface: staying quiet here looks exactly like a
+	// schedule with plenty of weeks left.
+	t.Run("failed check is reported", func(t *testing.T) {
+		q := &horizonQuerier{t: t, err: errors.New("connection reset")}
+
+		got := horizonProblems(context.Background(), q, cfg, thursday)
+		if len(got) != 1 || !strings.Contains(got[0], "connection reset") {
+			t.Errorf("got %v, want one problem naming the cause", got)
+		}
+	})
+}
+
 func TestWarnHorizon(t *testing.T) {
 	now := time.Date(2026, 9, 6, 12, 0, 0, 0, time.UTC)
 	far := now.AddDate(0, 0, 100)
@@ -233,6 +275,35 @@ func TestWarnHorizon(t *testing.T) {
 		}
 		if len(*sent) != 1 {
 			t.Fatalf("got %d messages, want 1 covering every duty", len(*sent))
+		}
+	})
+
+	t.Run("schedule already over still warns", func(t *testing.T) {
+		sent := stubSendAdmin(t)
+		past := now.AddDate(0, 0, -3)
+		q := &horizonQuerier{t: t, last: &past}
+		cfg := config.Config{AdminChatID: "123"}
+
+		if err := warnHorizon(context.Background(), q, cfg, now); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(*sent) != 1 {
+			t.Fatalf("got %d messages, want 1", len(*sent))
+		}
+	})
+
+	t.Run("failed send is an error", func(t *testing.T) {
+		wantErr := errors.New("telegram down")
+		prev := sendAdmin
+		sendAdmin = func(ctx context.Context, c *http.Client, token string, chatID int64, text string) error {
+			return wantErr
+		}
+		t.Cleanup(func() { sendAdmin = prev })
+		q := &horizonQuerier{t: t, last: &near}
+		cfg := config.Config{AdminChatID: "123"}
+
+		if err := warnHorizon(context.Background(), q, cfg, now); !errors.Is(err, wantErr) {
+			t.Errorf("got %v, want %v", err, wantErr)
 		}
 	})
 
