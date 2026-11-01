@@ -22,6 +22,7 @@ cp .env.example .env   # fill in the values
 | `DATABASE_URL` | Postgres connection string (use Neon's pooler endpoint) |
 | `WEBHOOK_SECRET` | secret Telegram must send with every webhook call |
 | `CRON_SECRET` | bearer token Vercel Cron must send |
+| `ADMIN_CHAT_ID` | your private chat with the bot (= your Telegram id): failure notices, onboarding approvals, and the only user the commands answer |
 
 Set the same variables in the Vercel project dashboard for deployment.
 
@@ -44,6 +45,7 @@ task tidy              # tidy dependencies
 task migrate           # apply database migrations
 task seed -- -dry      # seed / regenerate the schedule (flags after --)
 task setcommands       # push the bot's command menu to Telegram (manual)
+task setwebhook        # re-register the webhook with the update kinds the bot handles (manual)
 task mcp               # run the MCP server (started by an MCP client, not by hand)
 ```
 
@@ -60,6 +62,32 @@ the unit tests fake. Plain `task test` needs no database. CI runs both.
 duty this week — each with a `_plan` variant for the next 4 weeks, plus `/help`
 and `/start`. All defined in `pkg/botcmd`. `task setcommands` pushes the menu to
 Telegram (`setMyCommands`); `task setcommands -- -show` prints the current one.
+
+The commands answer `ADMIN_CHAT_ID` only, in the group and in private; anyone
+else gets no reply. The scheduled reminders still go to the group.
+
+## Onboarding
+
+A new resident opens the bot and sends `/start`:
+
+1. `ADMIN_CHAT_ID` gets a card with their name and ✅ / ❌ buttons.
+2. ✅ — they pick their room from buttons 1–8. ❌ — they are told once; after
+   that the bot ignores their `/start` (the `rejected` status is the block list).
+3. The bot sends them a join-request link to the group (valid 24 h). It approves
+   their request itself, sets their member tag to the room number (`3`) and
+   greets them in the group. Join requests from anybody else are left to you.
+
+Someone already in the group who sends `/start` skips the approval and just
+picks a room, which updates their tag. State lives in `users.status` /
+`users.room`.
+
+One-time setup:
+
+- Make the bot a group admin with **Invite users via link** (`can_invite_users`)
+  and **Manage tags** (`can_manage_tags`).
+- `task setwebhook` — Telegram must send `callback_query` and
+  `chat_join_request`, which the default registration may not include.
+  `task setwebhook -- -show` prints the current registration.
 
 ## MCP server
 

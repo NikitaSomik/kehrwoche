@@ -130,3 +130,39 @@ func TestIsPrivate(t *testing.T) {
 		}
 	}
 }
+
+func TestDecodeCallbackAndJoinRequest(t *testing.T) {
+	body := `{"update_id":1,"callback_query":{"id":"abc","from":{"id":7,"first_name":"Anna","last_name":"M","username":"anna"},
+		"message":{"message_id":3,"chat":{"id":7,"type":"private"},"text":"Zimmer?"},"data":"room:3"}}`
+	var u Update
+	if err := json.Unmarshal([]byte(body), &u); err != nil {
+		t.Fatal(err)
+	}
+	q := u.CallbackQuery
+	if q == nil || q.ID != "abc" || q.Data != "room:3" || q.Message.MessageID != 3 || q.From.Name() != "Anna M" || q.From.Username != "anna" {
+		t.Errorf("got %+v", q)
+	}
+	if u.Message != nil {
+		t.Error("Message must stay nil for a callback")
+	}
+
+	body = `{"update_id":2,"chat_join_request":{"chat":{"id":-100,"type":"supergroup"},"from":{"id":7,"first_name":"Anna"},"user_chat_id":7,"date":1}}`
+	u = Update{}
+	if err := json.Unmarshal([]byte(body), &u); err != nil {
+		t.Fatal(err)
+	}
+	r := u.ChatJoinRequest
+	if r == nil || r.Chat.ID != -100 || r.From.ID != 7 || r.UserChatID != 7 {
+		t.Errorf("got %+v", r)
+	}
+}
+
+func TestUserName(t *testing.T) {
+	var nilUser *User
+	if nilUser.Name() != "" {
+		t.Error("nil user")
+	}
+	if got := (&User{FirstName: "Anna"}).Name(); got != "Anna" {
+		t.Errorf("got %q", got)
+	}
+}

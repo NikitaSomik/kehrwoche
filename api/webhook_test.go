@@ -11,6 +11,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgconn"
 
+	"github.com/NikitaSomik/kehrwoche/pkg/config"
 	"github.com/NikitaSomik/kehrwoche/pkg/telegram"
 )
 
@@ -78,6 +79,8 @@ func TestWebhook_AuthorizedRequests(t *testing.T) {
 		{"unknown command", commandUpdateJSON("nope")},
 		{"/start in a group falls through and is ignored", commandUpdateJSON("start")},
 		{"known command, no DB available", commandUpdateJSON("toilette1")},
+		{"callback with onboarding off", `{"update_id":1,"callback_query":{"id":"x","from":{"id":1},"data":"room:3"}}`},
+		{"join request with onboarding off", `{"update_id":1,"chat_join_request":{"chat":{"id":-100},"from":{"id":1},"user_chat_id":1}}`},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -141,4 +144,29 @@ func TestRecordUser(t *testing.T) {
 
 		recordUser(context.Background(), e, msg)
 	})
+}
+
+func TestIsAdmin(t *testing.T) {
+	from := func(id int64) *telegram.Message {
+		return &telegram.Message{Chat: &telegram.Chat{ID: -100, Type: "supergroup"}, From: &telegram.User{ID: id}}
+	}
+	cases := []struct {
+		name  string
+		admin string
+		msg   *telegram.Message
+		want  bool
+	}{
+		{"the admin", "42", from(42), true},
+		{"anybody else", "42", from(7), false},
+		{"no sender", "42", &telegram.Message{Chat: &telegram.Chat{ID: 42}}, false},
+		{"ADMIN_CHAT_ID unset", "", from(42), false},
+		{"ADMIN_CHAT_ID invalid", "me", from(42), false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := isAdmin(config.Config{AdminChatID: tc.admin}, tc.msg); got != tc.want {
+				t.Errorf("got %v, want %v", got, tc.want)
+			}
+		})
+	}
 }

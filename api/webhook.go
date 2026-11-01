@@ -13,6 +13,7 @@ import (
 	"github.com/NikitaSomik/kehrwoche/pkg/botcmd"
 	"github.com/NikitaSomik/kehrwoche/pkg/config"
 	"github.com/NikitaSomik/kehrwoche/pkg/db"
+	"github.com/NikitaSomik/kehrwoche/pkg/onboard"
 	"github.com/NikitaSomik/kehrwoche/pkg/telegram"
 	"github.com/NikitaSomik/kehrwoche/pkg/users"
 )
@@ -43,25 +44,56 @@ func Webhook(w http.ResponseWriter, r *http.Request) {
 		log.Printf("webhook: decode: %v", err)
 		return
 	}
-	if update.Message == nil {
-		return
-	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
 	defer cancel()
 
-	cmd := update.Message.Command()
+	bot := telegram.Client{HTTP: http.DefaultClient, Token: cfg.TelegramToken}
+	switch {
+	case update.CallbackQuery != nil:
+		withFlow(ctx, cfg, bot, "callback", func(f onboard.Flow) error {
+			return f.Callback(ctx, update.CallbackQuery)
+		})
+	case update.ChatJoinRequest != nil:
+		withFlow(ctx, cfg, bot, "join request", func(f onboard.Flow) error {
+			return f.JoinRequest(ctx, update.ChatJoinRequest)
+		})
+	case update.Message != nil:
+		handleMessage(ctx, cfg, bot, update.Message)
+	}
+}
+
+func handleMessage(ctx context.Context, cfg config.Config, bot telegram.Client, msg *telegram.Message) {
+	cmd := msg.Command()
+	private := msg.Chat.IsPrivate()
+
+	// /start in private is the way into the group. Without both chat ids
+	// there is nothing to join or nobody to approve, so it falls back to the
+	// plain greeting below.
+	if cmd == botcmd.CmdStart && private && onboardingEnabled(cfg) {
+		withFlow(ctx, cfg, bot, "start", func(f onboard.Flow) error {
+			return f.Start(ctx, msg.From)
+		})
+		return
+	}
+
+	// Everything except /start in private answers the admin alone, in the
+	// group as in private; anybody else gets silence.
+	openToAll := cmd == botcmd.CmdStart && private
+	if !openToAll && !isAdmin(cfg, msg) {
+		return
+	}
 
 	// /help (any chat) and /start (private only) are static text — no DB needed.
-	if reply, ok := botcmd.StaticReply(cmd, update.Message.Chat.IsPrivate()); ok {
+	if reply, ok := botcmd.StaticReply(cmd, private); ok {
 		// /start is someone opening the bot in private for the first time, and
 		// often the only sighting of a resident who reads the group chat but
 		// never types a command in it. Worth the one connection this path
 		// otherwise avoids; /help stays free of the database.
 		if cmd == botcmd.CmdStart {
-			recordSender(ctx, cfg, update.Message)
+			recordSender(ctx, cfg, msg)
 		}
-		if err := telegram.SendPlain(ctx, http.DefaultClient, cfg.TelegramToken, update.Message.Chat.ID, reply); err != nil {
+		if err := bot.SendPlain(ctx, msg.Chat.ID, reply); err != nil {
 			log.Printf("webhook: send static: %v", err)
 		}
 		return
@@ -85,7 +117,7 @@ func Webhook(w http.ResponseWriter, r *http.Request) {
 
 	// The connection is open either way, so recording the sender costs nothing
 	// beyond the statement itself.
-	recordUser(ctx, conn, update.Message)
+	recordUser(ctx, conn, msg)
 
 	loc, err := time.LoadLocation("Europe/Berlin")
 	if err != nil {
@@ -99,8 +131,48 @@ func Webhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := telegram.Send(ctx, http.DefaultClient, cfg.TelegramToken, update.Message.Chat.ID, text); err != nil {
+	if err := telegram.Send(ctx, http.DefaultClient, cfg.TelegramToken, msg.Chat.ID, text); err != nil {
 		log.Printf("webhook: send: %v", err)
+	}
+}
+
+// isAdmin reports whether msg was sent by the admin. ADMIN_CHAT_ID is the
+// admin's private chat with the bot, and a private chat's id is the user's
+// id, so the one variable names both where notices go and who may use the
+// commands. Fail-closed: with ADMIN_CHAT_ID unset or invalid nobody is admin.
+func isAdmin(cfg config.Config, msg *telegram.Message) bool {
+	adminID, ok := cfg.AdminID()
+	return ok && msg.From != nil && msg.From.ID == adminID
+}
+
+func onboardingEnabled(cfg config.Config) bool {
+	_, group := cfg.GroupID()
+	_, admin := cfg.AdminID()
+	return group && admin
+}
+
+// withFlow runs one onboarding step with a DB connection of its own. Errors
+// are logged under what, like every other webhook failure; the steps tell the
+// user themselves when something went wrong on their side.
+func withFlow(ctx context.Context, cfg config.Config, bot telegram.Client, what string, step func(onboard.Flow) error) {
+	groupID, ok1 := cfg.GroupID()
+	adminID, ok2 := cfg.AdminID()
+	if !ok1 || !ok2 {
+		return
+	}
+	conn, err := db.Connect(ctx, cfg.DatabaseURL)
+	if err != nil {
+		log.Printf("webhook: %s: db connect: %v", what, err)
+		return
+	}
+	defer func() {
+		if err := conn.Close(ctx); err != nil {
+			log.Printf("webhook: %s: db close: %v", what, err)
+		}
+	}()
+	f := onboard.Flow{Bot: bot, DB: conn, GroupID: groupID, AdminID: adminID, Now: time.Now}
+	if err := step(f); err != nil {
+		log.Printf("webhook: %s: %v", what, err)
 	}
 }
 

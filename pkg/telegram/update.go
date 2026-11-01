@@ -14,11 +14,33 @@ import (
 // takes into the bot. Only three of its structs and two of its methods were
 // ever used.
 
-// Update is one webhook delivery. Message is nil for the update kinds the bot
-// doesn't handle (edits, callbacks, channel posts).
+// Update is one webhook delivery. Exactly one of the pointers is set for the
+// update kinds the bot handles; all are nil for the rest (edits, channel
+// posts). Which kinds Telegram sends at all is decided by allowed_updates at
+// setWebhook time (cmd/setwebhook).
 type Update struct {
-	UpdateID int      `json:"update_id"`
-	Message  *Message `json:"message"`
+	UpdateID        int              `json:"update_id"`
+	Message         *Message         `json:"message"`
+	CallbackQuery   *CallbackQuery   `json:"callback_query"`
+	ChatJoinRequest *ChatJoinRequest `json:"chat_join_request"`
+}
+
+// CallbackQuery is a press of an inline keyboard button. Message is the
+// message the keyboard was attached to; Data is the button's callback_data,
+// which arrives from the client and must be parsed as untrusted input.
+type CallbackQuery struct {
+	ID      string   `json:"id"`
+	From    *User    `json:"from"`
+	Message *Message `json:"message"`
+	Data    string   `json:"data"`
+}
+
+// ChatJoinRequest is somebody asking to join a chat through a link that needs
+// approval.
+type ChatJoinRequest struct {
+	Chat       *Chat `json:"chat"`
+	From       *User `json:"from"`
+	UserChatID int64 `json:"user_chat_id"`
 }
 
 type Message struct {
@@ -30,7 +52,19 @@ type Message struct {
 }
 
 type User struct {
-	ID int64 `json:"id"`
+	ID        int64  `json:"id"`
+	FirstName string `json:"first_name"`
+	LastName  string `json:"last_name"`
+	Username  string `json:"username"`
+}
+
+// Name is the user's display name: first and last name, as Telegram shows it.
+// Safe on a nil receiver.
+func (u *User) Name() string {
+	if u == nil {
+		return ""
+	}
+	return strings.TrimSpace(u.FirstName + " " + u.LastName)
 }
 
 type Chat struct {

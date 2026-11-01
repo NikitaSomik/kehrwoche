@@ -3,7 +3,10 @@
 // scattered across api/ and cmd/.
 package config
 
-import "os"
+import (
+	"os"
+	"strconv"
+)
 
 type Config struct {
 	DatabaseURL   string
@@ -27,4 +30,24 @@ func Load() Config {
 		ChatID:        os.Getenv("CHAT_ID"),
 		AdminChatID:   os.Getenv("ADMIN_CHAT_ID"),
 	}
+}
+
+// GroupID is CHAT_ID as a number: the WG group the bot serves. ok is false
+// when it is unset or not a number.
+func (c Config) GroupID() (id int64, ok bool) {
+	return parseChatID(c.ChatID)
+}
+
+// AdminID is ADMIN_CHAT_ID as a number. ok is false when it is unset or not a
+// number.
+func (c Config) AdminID() (id int64, ok bool) {
+	return parseChatID(c.AdminChatID)
+}
+
+func parseChatID(s string) (int64, bool) {
+	id, err := strconv.ParseInt(s, 10, 64)
+	if err != nil || id == 0 {
+		return 0, false
+	}
+	return id, true
 }
