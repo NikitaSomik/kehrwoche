@@ -7,6 +7,9 @@ import (
 	"net/http/httptest"
 	"os"
 	"testing"
+	"time"
+
+	"github.com/NikitaSomik/kehrwoche/pkg/schedule"
 )
 
 // This one really talks to Telegram, which is why it sits behind a build tag
@@ -22,6 +25,13 @@ func TestCronNotifiesAdminOnFailure(t *testing.T) {
 			t.Skipf("%s is not set; run through `task smoke:cron` so .env is loaded", key)
 		}
 	}
+	// Outside ReminderHour the run would skip itself before the failure.
+	now := time.Now()
+	clock = func() time.Time {
+		return time.Date(now.Year(), now.Month(), now.Day(), schedule.ReminderHour, 0, 0, 0, berlin(t))
+	}
+	t.Cleanup(func() { clock = time.Now })
+
 	// Unroutable rather than merely wrong, so the failure is a connection one.
 	t.Setenv("DATABASE_URL", "postgres://user:pass@127.0.0.1:1/nope")
 
@@ -35,4 +45,13 @@ func TestCronNotifiesAdminOnFailure(t *testing.T) {
 		t.Fatalf("got status %d, want %d — the run should have failed", rec.Code, http.StatusInternalServerError)
 	}
 	t.Log("cron failed as intended; check your private chat for the notice")
+}
+
+func berlin(t *testing.T) *time.Location {
+	t.Helper()
+	loc, err := time.LoadLocation("Europe/Berlin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return loc
 }

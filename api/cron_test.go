@@ -2,9 +2,13 @@ package handler
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -82,6 +86,7 @@ func TestCron_Unauthorized(t *testing.T) {
 func TestCron_ValidSecret_DBError(t *testing.T) {
 	// No live DB in this test — db.Connect fails fast on an empty
 	// DATABASE_URL, exercising the post-auth error path without a network call.
+	setClock(t, berlinTime(t, 2026, time.November, 5, schedule.ReminderHour, 7))
 	t.Setenv("CRON_SECRET", "abc")
 	t.Setenv("DATABASE_URL", "")
 	req := httptest.NewRequest(http.MethodPost, "/api/cron", nil)
@@ -93,6 +98,126 @@ func TestCron_ValidSecret_DBError(t *testing.T) {
 	if rec.Code != http.StatusInternalServerError {
 		t.Errorf("got status %d, want %d", rec.Code, http.StatusInternalServerError)
 	}
+}
+
+// The run vercel.json fires an hour off ReminderHour must end before it
+// touches the database. DATABASE_URL is empty, so a run that got as far as
+// connecting would answer 500 instead.
+func TestCron_OffHourRunDoesNothing(t *testing.T) {
+	t.Setenv("CRON_SECRET", "abc")
+	t.Setenv("DATABASE_URL", "")
+	for _, hour := range []int{schedule.ReminderHour - 1, schedule.ReminderHour + 1} {
+		setClock(t, berlinTime(t, 2026, time.November, 5, hour, 30))
+		req := httptest.NewRequest(http.MethodGet, "/api/cron", nil)
+		req.Header.Set("Authorization", "Bearer abc")
+		rec := httptest.NewRecorder()
+
+		Cron(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Errorf("%02d:30 Berlin: got status %d, want %d", hour, rec.Code, http.StatusOK)
+		}
+	}
+}
+
+// weeklyDuties sets the order the reminder lists the weekly duties in, so it
+// stays a literal. The set still has to match the cadence in pkg/schedule, or
+// a weekly duty added there would be silently left out of the reminder.
+func TestWeeklyDutiesMatchSchedule(t *testing.T) {
+	got := slices.Clone(weeklyDuties)
+	want := schedule.WeeklyDuties()
+	slices.Sort(got)
+	slices.Sort(want)
+	if !slices.Equal(got, want) {
+		t.Errorf("weeklyDuties = %v, but the weekly duties in pkg/schedule are %v: update the list in api/cron.go",
+			weeklyDuties, schedule.WeeklyDuties())
+	}
+}
+
+// vercel.json is the one place the cadence lives outside Go. Check it against
+// the code: every entry fires on the reminder weekdays, and on every day of
+// the year — summer time, winter time and the weeks they change — exactly one
+// entry lands in ReminderHour in Berlin, wherever in its hour Vercel starts it
+// (on Hobby that is anywhere from :00 to :59).
+func TestVercelCronMatchesReminderHour(t *testing.T) {
+	raw, err := os.ReadFile("../vercel.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cfg struct {
+		Crons []struct {
+			Path     string `json:"path"`
+			Schedule string `json:"schedule"`
+		} `json:"crons"`
+	}
+	if err := json.Unmarshal(raw, &cfg); err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.Crons) == 0 {
+		t.Fatal("vercel.json has no crons")
+	}
+
+	var wantDays []string
+	for _, d := range schedule.ReminderWeekdays() {
+		wantDays = append(wantDays, strconv.Itoa(int(d)))
+	}
+	var hours []int
+	for _, c := range cfg.Crons {
+		f := strings.Fields(c.Schedule)
+		if len(f) != 5 {
+			t.Fatalf("%q: want 5 fields", c.Schedule)
+		}
+		if c.Path != "/api/cron" || f[0] != "0" || f[2] != "*" || f[3] != "*" {
+			t.Errorf("%s %q: want path /api/cron, minute 0, every day of month, every month", c.Path, c.Schedule)
+		}
+		if f[4] != strings.Join(wantDays, ",") {
+			t.Errorf("%q fires on weekdays %s, the code announces on %s", c.Schedule, f[4], strings.Join(wantDays, ","))
+		}
+		h, err := strconv.Atoi(f[1])
+		if err != nil {
+			t.Fatalf("%q: hour %q is not a number", c.Schedule, f[1])
+		}
+		hours = append(hours, h)
+	}
+
+	loc, err := time.LoadLocation("Europe/Berlin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for day := time.Date(2026, time.January, 1, 0, 0, 0, 0, time.UTC); day.Year() < 2028; day = day.AddDate(0, 0, 1) {
+		hits := 0
+		for _, h := range hours {
+			start := day.Add(time.Duration(h) * time.Hour)
+			end := start.Add(59 * time.Minute)
+			startHit := start.In(loc).Hour() == schedule.ReminderHour
+			if startHit != (end.In(loc).Hour() == schedule.ReminderHour) {
+				t.Errorf("%s: the %02d:00 UTC run straddles ReminderHour", day.Format("2006-01-02"), h)
+			}
+			if startHit {
+				hits++
+			}
+		}
+		if hits != 1 {
+			t.Errorf("%s: %d cron runs land in %02d:xx Berlin, want exactly 1", day.Format("2006-01-02"), hits, schedule.ReminderHour)
+		}
+	}
+}
+
+// setClock makes Cron see now as the current time for the rest of the test.
+func setClock(t *testing.T, now time.Time) {
+	t.Helper()
+	prev := clock
+	clock = func() time.Time { return now }
+	t.Cleanup(func() { clock = prev })
+}
+
+func berlinTime(t *testing.T, year int, month time.Month, day, hour, minute int) time.Time {
+	t.Helper()
+	loc, err := time.LoadLocation("Europe/Berlin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return time.Date(year, month, day, hour, minute, 0, 0, loc)
 }
 
 // stubSendPlain replaces the Bot API call for the duration of a test and

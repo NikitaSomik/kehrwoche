@@ -40,6 +40,9 @@ func dutiesFor(weekday time.Weekday) []schedule.DutyType {
 	}
 }
 
+// clock is time.Now, a variable so tests can pick the hour a run happens at.
+var clock = time.Now
+
 func Cron(w http.ResponseWriter, r *http.Request) {
 	cfg := config.Load()
 
@@ -55,6 +58,23 @@ func Cron(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
 	defer cancel()
 
+	loc, err := time.LoadLocation("Europe/Berlin")
+	if err != nil {
+		log.Printf("cron: load location: %v", err)
+		reportProblems(ctx, cfg, fmt.Sprintf("Zeitzone nicht ladbar: %v", err))
+		http.Error(w, "config error", http.StatusInternalServerError)
+		return
+	}
+	now := clock().In(loc)
+
+	// vercel.json fires at two UTC hours because Vercel Cron knows no time
+	// zones; exactly one of them is ReminderHour in Berlin on any given day,
+	// summer or winter. The other run ends here, before it opens a connection.
+	if now.Hour() != schedule.ReminderHour {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
 	conn, err := db.Connect(ctx, cfg.DatabaseURL)
 	if err != nil {
 		log.Printf("cron: db connect: %v", err)
@@ -69,15 +89,6 @@ func Cron(w http.ResponseWriter, r *http.Request) {
 			log.Printf("cron: db close: %v", err)
 		}
 	}()
-
-	loc, err := time.LoadLocation("Europe/Berlin")
-	if err != nil {
-		log.Printf("cron: load location: %v", err)
-		reportProblems(ctx, cfg, fmt.Sprintf("Zeitzone nicht ladbar: %v", err))
-		http.Error(w, "config error", http.StatusInternalServerError)
-		return
-	}
-	now := time.Now().In(loc)
 
 	duties := dutiesFor(now.Weekday())
 	if len(duties) == 0 {
