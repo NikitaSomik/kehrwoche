@@ -22,6 +22,7 @@ cp .env.example .env   # fill in the values
 | `DATABASE_URL` | Postgres connection string (use Neon's pooler endpoint) |
 | `WEBHOOK_SECRET` | secret Telegram must send with every webhook call |
 | `CRON_SECRET` | bearer token Vercel Cron must send |
+| `ADMIN_CHAT_ID` | your private chat with the bot (= your Telegram id) or a small group with the bot in it: failure notices and onboarding approvals. Only admins of the WG group can approve or reject |
 
 Set the same variables in the Vercel project dashboard for deployment.
 
@@ -43,7 +44,8 @@ task fmt               # gofmt
 task tidy              # tidy dependencies
 task migrate           # apply database migrations
 task seed -- -dry      # seed / regenerate the schedule (flags after --)
-task setcommands       # push the bot's command menu to Telegram (manual)
+task setcommands       # command menu for the group only, none elsewhere (manual)
+task setwebhook        # re-register the webhook with the update kinds the bot handles (manual)
 task mcp               # run the MCP server (started by an MCP client, not by hand)
 ```
 
@@ -58,8 +60,45 @@ the unit tests fake. Plain `task test` needs no database. CI runs both.
 
 `/toilette1`, `/toilette2`, `/treppenhaus`, `/etage`, `/waschkueche` — who's on
 duty this week — each with a `_plan` variant for the next 4 weeks, plus `/help`
-and `/start`. All defined in `pkg/botcmd`. `task setcommands` pushes the menu to
-Telegram (`setMyCommands`); `task setcommands -- -show` prints the current one.
+and `/start`. All defined in `pkg/botcmd`.
+
+In the WG group (`CHAT_ID`) the commands answer everyone; other groups get
+nothing. In private they answer only admins of the group (`creator` /
+`administrator`, checked with `getChatMember` on every command). An admin's
+`/start` shows the command list and sets the command menu for that chat. A
+member's `/start` gets a greeting, a banned user's nothing, anybody else's
+starts the onboarding.
+
+`task setcommands` sets the menu for the group and removes it from the broad
+scopes (default, private chats, groups, group admins), so strangers see none;
+`-- -show` prints the broad scopes.
+
+## Onboarding
+
+A new resident opens the bot and sends `/start`:
+
+1. `ADMIN_CHAT_ID` gets a card with their name, id and ✅ / ❌ buttons; only an
+   admin of the WG group can press them. A 👤 button opens their real profile
+   (names are anyone's to pick); it is left off when their privacy settings
+   refuse it.
+2. ✅ — they pick their room from buttons 1–8. ❌ — they are told once; after
+   that the bot ignores their `/start` (the `rejected` status is the block list).
+3. The bot sends them a personal join-request link (valid 24 h; another
+   `/start` sends the same one until it is nearly expired). It approves
+   their request only if it comes from them through that link, revokes the
+   link, sets their member tag to the room number (`3`) and greets them in the
+   group. Any other join request is left to you.
+
+Someone already in the group who sends `/start` just gets a greeting. State
+lives in `users.status` / `users.room` / `users.invite_link` / `users.invite_expires_at`.
+
+One-time setup:
+
+- Make the bot a group admin with **Invite users via link** (`can_invite_users`)
+  and **Manage tags** (`can_manage_tags`).
+- `task setwebhook` — Telegram must send `callback_query` and
+  `chat_join_request`, which the default registration may not include.
+  `task setwebhook -- -show` prints the current registration.
 
 ## MCP server
 
