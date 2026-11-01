@@ -207,3 +207,18 @@ func TestReminderDaysJoinsGermanStyle(t *testing.T) {
 		t.Errorf("got %q", got)
 	}
 }
+
+func TestAdminStartReplyListsEveryCommand(t *testing.T) {
+	got := AdminStartReply()
+	if !strings.HasPrefix(got, startMessage) {
+		t.Errorf("does not open with the greeting:\n%s", got)
+	}
+	for _, c := range Menu() {
+		if c.Command == CmdHelp {
+			continue
+		}
+		if !strings.Contains(got, "/"+c.Command+" ") {
+			t.Errorf("missing /%s:\n%s", c.Command, got)
+		}
+	}
+}
