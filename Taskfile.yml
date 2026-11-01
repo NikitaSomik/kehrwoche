@@ -85,3 +85,8 @@ tasks:
     desc: 'Push the bot command menu to Telegram (setMyCommands) — hits the API, run manually. `-- -show` prints the current menu'
     cmds:
       - go run ./cmd/setcommands {{.CLI_ARGS}}
+
+  setwebhook:
+    desc: 'Re-register the Telegram webhook with the update kinds the bot handles — hits the API, run manually. `-- -show` prints the current one'
+    cmds:
+      - go run ./cmd/setwebhook {{.CLI_ARGS}}
