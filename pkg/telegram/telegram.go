@@ -51,6 +51,27 @@ func SetCommands(ctx context.Context, client *http.Client, token string, cmds []
 	return err
 }
 
+// SetChatCommands sets the command menu of one chat (BotCommandScopeChat),
+// which takes precedence over every broader scope there.
+func SetChatCommands(ctx context.Context, client *http.Client, token string, cmds []Command, chatID int64) error {
+	_, err := call(ctx, client, token, "setMyCommands", map[string]any{
+		"commands": cmds,
+		"scope":    map[string]any{"type": "chat", "chat_id": chatID},
+	})
+	return err
+}
+
+// DeleteCommands removes the command menu of a scope (deleteMyCommands); an
+// empty scope means the default scope.
+func DeleteCommands(ctx context.Context, client *http.Client, token, scope string) error {
+	payload := map[string]any{}
+	if scope != "" {
+		payload["scope"] = map[string]string{"type": scope}
+	}
+	_, err := call(ctx, client, token, "deleteMyCommands", payload)
+	return err
+}
+
 // GetCommands returns the bot's command menu (getMyCommands) for the given
 // scope; an empty scope means the default scope.
 func GetCommands(ctx context.Context, client *http.Client, token, scope string) ([]Command, error) {
