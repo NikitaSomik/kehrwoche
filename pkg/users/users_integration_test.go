@@ -52,3 +52,98 @@ func TestRecordUpsertsOneRow(t *testing.T) {
 		t.Errorf("updated_at did not advance: %s then %s", updated1, updated2)
 	}
 }
+
+// The onboarding's transitions, against the real constraints: a request is
+// filed once, decided once, a room needs approval, and the CHECKs hold.
+func TestOnboardingTransitions(t *testing.T) {
+	conn := pgtest.Connect(t)
+	ctx := context.Background()
+	const id = int64(555)
+
+	mustGet := func(want users.User) {
+		t.Helper()
+		got, found, err := users.Get(ctx, conn, id)
+		if err != nil || !found {
+			t.Fatalf("get: found=%v err=%v", found, err)
+		}
+		// Compared apart: pgx hands the timestamp back in the local zone.
+		if !got.InviteExpires.Equal(want.InviteExpires) {
+			t.Errorf("expires %v, want %v", got.InviteExpires, want.InviteExpires)
+		}
+		got.InviteExpires, want.InviteExpires = time.Time{}, time.Time{}
+		if got != want {
+			t.Errorf("got %+v, want %+v", got, want)
+		}
+	}
+
+	if _, found, err := users.Get(ctx, conn, id); err != nil || found {
+		t.Fatalf("unknown user: found=%v err=%v", found, err)
+	}
+
+	// Seen before the onboarding: the request still goes through.
+	if err := users.Record(ctx, conn, id); err != nil {
+		t.Fatal(err)
+	}
+	mustGet(users.User{})
+
+	if ok, err := users.SetApprovedRoom(ctx, conn, id, 3); err != nil || ok {
+		t.Fatalf("room before approval: ok=%v err=%v", ok, err)
+	}
+	if ok, err := users.RequestJoin(ctx, conn, id); err != nil || !ok {
+		t.Fatalf("first request: ok=%v err=%v", ok, err)
+	}
+	if ok, err := users.RequestJoin(ctx, conn, id); err != nil || ok {
+		t.Fatalf("second request: ok=%v err=%v", ok, err)
+	}
+	mustGet(users.User{Status: users.StatusPending})
+
+	if err := users.CancelRequest(ctx, conn, id); err != nil {
+		t.Fatal(err)
+	}
+	mustGet(users.User{})
+	if ok, err := users.RequestJoin(ctx, conn, id); err != nil || !ok {
+		t.Fatalf("request after cancel: ok=%v err=%v", ok, err)
+	}
+
+	if ok, err := users.Decide(ctx, conn, id, true); err != nil || !ok {
+		t.Fatalf("approve: ok=%v err=%v", ok, err)
+	}
+	if ok, err := users.Decide(ctx, conn, id, false); err != nil || ok {
+		t.Fatalf("second decision: ok=%v err=%v", ok, err)
+	}
+	if ok, err := users.SetApprovedRoom(ctx, conn, id, 3); err != nil || !ok {
+		t.Fatalf("room: ok=%v err=%v", ok, err)
+	}
+	mustGet(users.User{Status: users.StatusApproved, Room: 3})
+	expires := time.Date(2026, 11, 2, 21, 30, 0, 0, time.UTC)
+	if ok, err := users.SetInviteLink(ctx, conn, id, "https://t.me/+x", expires); err != nil || !ok {
+		t.Fatalf("link: ok=%v err=%v", ok, err)
+	}
+	mustGet(users.User{Status: users.StatusApproved, Room: 3, InviteLink: "https://t.me/+x", InviteExpires: expires})
+
+	if ok, err := users.MarkJoined(ctx, conn, id); err != nil || !ok {
+		t.Fatalf("joined: ok=%v err=%v", ok, err)
+	}
+	mustGet(users.User{Room: 3})
+	if ok, err := users.RequestJoin(ctx, conn, id); err != nil || !ok {
+		t.Fatalf("request after leaving: ok=%v err=%v", ok, err)
+	}
+
+	for _, room := range []int{0, 9} {
+		if _, err := conn.Exec(ctx, `UPDATE users SET room = $2 WHERE tg_user_id = $1`, id, room); err == nil {
+			t.Errorf("room %d passed the CHECK", room)
+		}
+	}
+
+	// A rejected user stays rejected: a new /start files nothing.
+	const other = int64(556)
+	if _, err := users.RequestJoin(ctx, conn, other); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := users.Decide(ctx, conn, other, false); err != nil {
+		t.Fatal(err)
+	}
+	if ok, err := users.RequestJoin(ctx, conn, other); err != nil || ok {
+		t.Errorf("request after rejection: ok=%v err=%v", ok, err)
+	}
+}
