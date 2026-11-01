@@ -18,6 +18,9 @@ import (
 	"github.com/NikitaSomik/kehrwoche/pkg/users"
 )
 
+// maxUpdateBytes caps the request body the webhook decodes.
+const maxUpdateBytes = 1 << 20
+
 func Webhook(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		w.WriteHeader(http.StatusMethodNotAllowed)
@@ -39,8 +42,10 @@ func Webhook(w http.ResponseWriter, r *http.Request) {
 	// Errors are logged but never returned as HTTP errors to Telegram.
 	w.WriteHeader(http.StatusOK)
 
+	// Updates are a few KB; the cap stops a caller holding the secret from
+	// making the function read without bound.
 	var update telegram.Update
-	if err := json.NewDecoder(r.Body).Decode(&update); err != nil {
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxUpdateBytes)).Decode(&update); err != nil {
 		log.Printf("webhook: decode: %v", err)
 		return
 	}
