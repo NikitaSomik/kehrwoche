@@ -23,3 +23,26 @@ func TestLoad(t *testing.T) {
 		t.Errorf("got %+v, want %+v", got, want)
 	}
 }
+
+func TestChatIDs(t *testing.T) {
+	cases := []struct {
+		in   string
+		want int64
+		ok   bool
+	}{
+		{"-1001234567890", -1001234567890, true},
+		{"42", 42, true},
+		{"", 0, false},
+		{"0", 0, false},
+		{"@wg", 0, false},
+	}
+	for _, tc := range cases {
+		c := Config{ChatID: tc.in, AdminChatID: tc.in}
+		if got, ok := c.GroupID(); got != tc.want || ok != tc.ok {
+			t.Errorf("GroupID(%q) = %d, %v", tc.in, got, ok)
+		}
+		if got, ok := c.AdminID(); got != tc.want || ok != tc.ok {
+			t.Errorf("AdminID(%q) = %d, %v", tc.in, got, ok)
+		}
+	}
+}
