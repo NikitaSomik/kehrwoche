@@ -165,17 +165,29 @@ func (d DutyType) PlanCount() int {
 	return PlanWeeks * len(configs[d].days)
 }
 
-// ReminderHour is the local hour the reminder cron fires at. It mirrors
-// vercel.json, which Go can't read at runtime, so the two are kept in step by
-// hand. The month-based DST split there drifts an hour in the last week of
-// March and of October.
-const ReminderHour = 11
+// ReminderHour is the Berlin hour the reminder goes out in. Vercel Cron runs
+// in UTC only, so vercel.json fires at the two UTC hours this can fall on
+// (one for winter time, one for summer time) and api/cron.go skips the run
+// whose Berlin hour is not this one. api/cron_test.go checks the two agree.
+const ReminderHour = 10
 
 // WeeklyReminderDay is the day the weekly duties are announced on: one day
 // ahead of their shared event day. Wraps mod 7 so it stays correct even if the
 // event day were ever Sunday.
 func WeeklyReminderDay() time.Weekday {
 	return time.Weekday((int(weeklyDays[0]) + 6) % 7)
+}
+
+// WeeklyDuties lists the duties on the shared weekly cadence, the ones
+// announced together on WeeklyReminderDay, in AllDutyTypes order.
+func WeeklyDuties() []DutyType {
+	var out []DutyType
+	for _, d := range AllDutyTypes() {
+		if slices.Equal(configs[d].days, weeklyDays) {
+			out = append(out, d)
+		}
+	}
+	return out
 }
 
 // ReminderWeekdays lists every weekday the bot announces on, Monday first:

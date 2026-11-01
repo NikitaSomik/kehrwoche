@@ -7,3 +7,10 @@ main
 .vercel
 .idea/
 .task/
+
+# Binaries from `go build ./cmd/...` run in the repo root. `task` uses
+# `go run`, so none of these are needed; build into out/ if you want one.
+/seed
+/migrate
+/setcommands
+/mcp

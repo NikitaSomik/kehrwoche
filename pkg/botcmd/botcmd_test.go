@@ -188,10 +188,10 @@ func TestMenuValidForTelegram(t *testing.T) {
 }
 
 // The closing line of /help used to promise "Jeden Donnerstag gegen 12 Uhr",
-// while the cron actually announces on three weekdays at 11. It is built from
-// pkg/schedule now, so it moves whenever the cadence does.
+// while the cron actually announced on three weekdays at another hour. It is
+// built from pkg/schedule now, so it moves whenever the cadence does.
 func TestHelpAnnouncesTheRealCadence(t *testing.T) {
-	for _, want := range []string{"dienstags, donnerstags und freitags", "gegen 11 Uhr"} {
+	for _, want := range []string{"dienstags, donnerstags und freitags", "gegen 10 Uhr"} {
 		if !strings.Contains(helpMessage, want) {
 			t.Errorf("helpMessage is missing %q:\n%s", want, helpMessage)
 		}

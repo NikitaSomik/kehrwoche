@@ -69,9 +69,10 @@ tasks:
 
   migrate:
     desc: Run database migrations
-    sources:
-      - migrations/**/*.sql
-      - cmd/migrate/**/*.go
+    # No `sources:` here: whether there is anything to apply depends on the
+    # database in DATABASE_URL, not on these files, and cmd/migrate already
+    # skips what schema_migrations records. A checksum would report "up to
+    # date" for a fresh database just because the files hadn't changed.
     cmds:
       - go run ./cmd/migrate
 

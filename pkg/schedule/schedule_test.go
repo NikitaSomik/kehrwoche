@@ -1,6 +1,7 @@
 package schedule
 
 import (
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -260,4 +261,11 @@ func TestFormatHorizonWarning(t *testing.T) {
 			}
 		}
 	})
+}
+
+func TestWeeklyDuties(t *testing.T) {
+	want := []DutyType{DutyTypeToilet1, DutyTypeToilet2, DutyTypeHall, DutyTypeFloor}
+	if got := WeeklyDuties(); !slices.Equal(got, want) {
+		t.Errorf("got %v, want %v", got, want)
+	}
 }
