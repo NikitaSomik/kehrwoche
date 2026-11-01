@@ -78,6 +78,8 @@ func TestWebhook_AuthorizedRequests(t *testing.T) {
 		{"unknown command", commandUpdateJSON("nope")},
 		{"/start in a group falls through and is ignored", commandUpdateJSON("start")},
 		{"known command, no DB available", commandUpdateJSON("toilette1")},
+		{"callback with onboarding off", `{"update_id":1,"callback_query":{"id":"x","from":{"id":1},"data":"room:3"}}`},
+		{"join request with onboarding off", `{"update_id":1,"chat_join_request":{"chat":{"id":-100},"from":{"id":1},"user_chat_id":1}}`},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
