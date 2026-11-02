@@ -94,6 +94,13 @@ A new resident opens the bot and sends `/start`:
 Someone already in the group who sends `/start` just gets a greeting. State
 lives in `users.status` / `users.room` / `users.invite_link` / `users.invite_expires_at`.
 
+Someone who was in the group before (`users.joined_at` is set when they join
+and never cleared) and asks again goes through the same steps, room choice
+included: the card says „War schon Mitglied der WG.“ and the group hears
+„👋 … ist wieder da!“ instead of the newcomer welcome. Leaving is not stored:
+the bot asks Telegram on every `/start`. A banned user stays silent until the
+ban is lifted in the group's removed users.
+
 ```mermaid
 flowchart TD
     start(["/start in private"]) --> role{"Role in the WG group<br/>(getChatMember)"}
@@ -125,7 +132,7 @@ flowchart TD
 
     join --> check{"From this user, status approved,<br/>room set, through their exact link?"}
     check -- "no" --> manual(["Left to the group admins"])
-    check -- "yes" --> done["Approve request<br/>status cleared, link revoked<br/>member tag = room number<br/>welcome in the group"]
+    check -- "yes" --> done["Approve request<br/>status cleared, link revoked<br/>member tag = room number<br/>welcome, or „wieder da“<br/>for a former member"]
 ```
 
 One-time setup:

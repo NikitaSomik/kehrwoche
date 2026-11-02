@@ -70,7 +70,12 @@ func TestOnboardingTransitions(t *testing.T) {
 		if !got.InviteExpires.Equal(want.InviteExpires) {
 			t.Errorf("expires %v, want %v", got.InviteExpires, want.InviteExpires)
 		}
+		// joined_at is the database's now(): only whether it is set is checked.
+		if got.JoinedAt.IsZero() != want.JoinedAt.IsZero() {
+			t.Errorf("joined_at %v, want set=%v", got.JoinedAt, !want.JoinedAt.IsZero())
+		}
 		got.InviteExpires, want.InviteExpires = time.Time{}, time.Time{}
+		got.JoinedAt, want.JoinedAt = time.Time{}, time.Time{}
 		if got != want {
 			t.Errorf("got %+v, want %+v", got, want)
 		}
@@ -124,10 +129,12 @@ func TestOnboardingTransitions(t *testing.T) {
 	if ok, err := users.MarkJoined(ctx, conn, id); err != nil || !ok {
 		t.Fatalf("joined: ok=%v err=%v", ok, err)
 	}
-	mustGet(users.User{Room: 3})
+	mustGet(users.User{Room: 3, JoinedAt: time.Now()})
 	if ok, err := users.RequestJoin(ctx, conn, id); err != nil || !ok {
 		t.Fatalf("request after leaving: ok=%v err=%v", ok, err)
 	}
+	// A former member picks the room again; joined_at stays.
+	mustGet(users.User{Status: users.StatusPending, JoinedAt: time.Now()})
 
 	for _, room := range []int{0, 9} {
 		if _, err := conn.Exec(ctx, `UPDATE users SET room = $2 WHERE tg_user_id = $1`, id, room); err == nil {

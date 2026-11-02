@@ -109,7 +109,7 @@ func (f Flow) Start(ctx context.Context, from *telegram.User, status telegram.Me
 	if !created { // a concurrent /start filed it
 		return f.Bot.SendPlain(ctx, uid, msgPending)
 	}
-	card := requestCard(from)
+	card := requestCard(from, !u.JoinedAt.IsZero())
 	err = f.Bot.SendKeyboard(ctx, f.AdminID, card, decisionKeyboard(uid, true))
 	if err != nil {
 		// Most likely the user's privacy settings refuse the profile button.
@@ -269,7 +269,7 @@ func (f Flow) JoinRequest(ctx context.Context, r *telegram.ChatJoinRequest) erro
 	if err := f.Bot.SetMemberTag(ctx, f.GroupID, uid, Tag(u.Room)); err != nil {
 		errs = append(errs, fmt.Errorf("set tag: %w", err))
 	}
-	if err := f.Bot.SendPlain(ctx, f.GroupID, welcome(r.From, u.Room)); err != nil {
+	if err := f.Bot.SendPlain(ctx, f.GroupID, welcome(r.From, u.Room, !u.JoinedAt.IsZero())); err != nil {
 		errs = append(errs, fmt.Errorf("welcome: %w", err))
 	}
 	return errors.Join(errs...)
@@ -335,7 +335,7 @@ func Tag(room int) string {
 	return strconv.Itoa(room)
 }
 
-func requestCard(u *telegram.User) string {
+func requestCard(u *telegram.User, returning bool) string {
 	var b strings.Builder
 	b.WriteString("Neue Anfrage für die WG-Gruppe:\n")
 	b.WriteString(u.Name())
@@ -343,12 +343,22 @@ func requestCard(u *telegram.User) string {
 		b.WriteString(" (@" + u.Username + ")")
 	}
 	fmt.Fprintf(&b, "\nID: %d", u.ID)
+	if returning {
+		b.WriteString("\nWar schon Mitglied der WG.")
+	}
 	return b.String()
 }
 
-func welcome(u *telegram.User, room int) string {
+func welcome(u *telegram.User, room int, returning bool) string {
+	name := u.Name()
+	if returning {
+		if name == "" {
+			name = "Jemand"
+		}
+		return fmt.Sprintf("👋 %s ist wieder da! Zimmer %d.", name, room)
+	}
 	greeting := "👋 Willkommen in der WG"
-	if name := u.Name(); name != "" {
+	if name != "" {
 		greeting += ", " + name
 	}
 	return fmt.Sprintf("%s! Zimmer %d.", greeting, room)
