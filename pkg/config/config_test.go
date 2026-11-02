@@ -9,6 +9,7 @@ func TestLoad(t *testing.T) {
 	t.Setenv("CRON_SECRET", "cron-secret")
 	t.Setenv("CHAT_ID", "123")
 	t.Setenv("ADMIN_CHAT_ID", "456")
+	t.Setenv("ONBOARDING_ENABLED", "true")
 
 	got := Load()
 	want := Config{
@@ -18,9 +19,20 @@ func TestLoad(t *testing.T) {
 		CronSecret:    "cron-secret",
 		ChatID:        "123",
 		AdminChatID:   "456",
+
+		OnboardingEnabled: true,
 	}
 	if got != want {
 		t.Errorf("got %+v, want %+v", got, want)
+	}
+}
+
+func TestOnboardingEnabled(t *testing.T) {
+	for value, want := range map[string]bool{"true": true, "1": true, "": false, "false": false, "yes": false} {
+		t.Setenv("ONBOARDING_ENABLED", value)
+		if got := Load().OnboardingEnabled; got != want {
+			t.Errorf("ONBOARDING_ENABLED=%q: got %v, want %v", value, got, want)
+		}
 	}
 }
 

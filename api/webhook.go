@@ -167,7 +167,7 @@ func onboardingEnabled(cfg config.Config) bool {
 func onboardingChats(cfg config.Config) (groupID, adminID int64, ok bool) {
 	groupID, okGroup := cfg.GroupID()
 	adminID, okAdmin := cfg.AdminID()
-	return groupID, adminID, okGroup && okAdmin
+	return groupID, adminID, cfg.OnboardingEnabled && okGroup && okAdmin
 }
 
 func withFlow(ctx context.Context, cfg config.Config, bot telegram.Client, what string, step func(onboard.Flow) error) {

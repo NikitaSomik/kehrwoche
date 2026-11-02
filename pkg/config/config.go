@@ -20,9 +20,13 @@ type Config struct {
 	// maintainers can act on. Empty disables them rather than falling back to
 	// the group chat.
 	AdminChatID string
+	// OnboardingEnabled is ONBOARDING_ENABLED read with strconv.ParseBool;
+	// anything else, unset included, leaves the onboarding off.
+	OnboardingEnabled bool
 }
 
 func Load() Config {
+	onboarding, _ := strconv.ParseBool(os.Getenv("ONBOARDING_ENABLED"))
 	return Config{
 		DatabaseURL:   os.Getenv("DATABASE_URL"),
 		TelegramToken: os.Getenv("TELEGRAM_BOT_TOKEN"),
@@ -30,6 +34,8 @@ func Load() Config {
 		CronSecret:    os.Getenv("CRON_SECRET"),
 		ChatID:        os.Getenv("CHAT_ID"),
 		AdminChatID:   os.Getenv("ADMIN_CHAT_ID"),
+
+		OnboardingEnabled: onboarding,
 	}
 }
 

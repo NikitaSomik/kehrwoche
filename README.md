@@ -23,6 +23,7 @@ cp .env.example .env   # fill in the values
 | `WEBHOOK_SECRET` | secret Telegram must send with every webhook call |
 | `CRON_SECRET` | bearer token Vercel Cron must send |
 | `ADMIN_CHAT_ID` | your private chat with the bot (= your Telegram id) or a small group with the bot in it: failure notices and onboarding approvals. Only admins of the WG group can approve or reject |
+| `ONBOARDING_ENABLED` | `true` turns the onboarding on; unset or anything else leaves it off, and strangers' `/start` gets a plain greeting |
 
 Set the same variables in the Vercel project dashboard for deployment.
 
@@ -134,6 +135,9 @@ One-time setup:
 - `task setwebhook` — Telegram must send `callback_query` and
   `chat_join_request`, which the default registration may not include.
   `task setwebhook -- -show` prints the current registration.
+- Set `ONBOARDING_ENABLED=true` in the Vercel dashboard and redeploy: Vercel
+  applies a changed variable only to new deployments. `false` turns it off the
+  same way; a request already in flight stays where it is.
 
 ## MCP server
 

@@ -248,16 +248,18 @@ func TestHandleMessageRouting(t *testing.T) {
 func TestOnboardingChats(t *testing.T) {
 	cases := []struct {
 		name, group, admin string
+		enabled            bool
 		want               bool
 	}{
-		{"both set", "-1001", "42", true},
-		{"admin unset", "-1001", "", false},
-		{"group unset", "", "42", false},
-		{"admin chat is a group", "-1001", "-1002", true},
+		{"enabled, both set", "-1001", "42", true, true},
+		{"disabled", "-1001", "42", false, false},
+		{"admin unset", "-1001", "", true, false},
+		{"group unset", "", "42", true, false},
+		{"admin chat is a group", "-1001", "-1002", true, true},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			_, _, ok := onboardingChats(config.Config{ChatID: c.group, AdminChatID: c.admin})
+			_, _, ok := onboardingChats(config.Config{ChatID: c.group, AdminChatID: c.admin, OnboardingEnabled: c.enabled})
 			if ok != c.want {
 				t.Errorf("ok = %v, want %v", ok, c.want)
 			}
