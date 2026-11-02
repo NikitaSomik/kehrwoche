@@ -70,15 +70,18 @@ func Webhook(w http.ResponseWriter, r *http.Request) {
 // handleMessage answers commands. In the WG group everyone gets them; other
 // groups get nothing. In private the sender's role in the group decides:
 // admins get every command, members a greeting, banned users nothing, and
-// everybody else the onboarding.
+// everybody else the onboarding, or a pointer to /start for anything else
+// they write.
 func handleMessage(ctx context.Context, cfg config.Config, bot telegram.Client, msg *telegram.Message) {
 	cmd := msg.Command()
 	groupID, ok := cfg.GroupID()
-	if cmd == "" || !ok || msg.Chat == nil || msg.From == nil {
+	if !ok || msg.Chat == nil || msg.From == nil {
 		return
 	}
 	if msg.Chat.ID == groupID {
-		answerCommand(ctx, cfg, bot, msg, cmd)
+		if cmd != "" {
+			answerCommand(ctx, cfg, bot, msg, cmd)
+		}
 		return
 	}
 	if !msg.Chat.IsPrivate() {
@@ -100,9 +103,17 @@ func handleMessage(ctx context.Context, cfg config.Config, bot telegram.Client, 
 			log.Printf("webhook: send admin start: %v", err)
 		}
 	case status.IsAdmin():
-		answerCommand(ctx, cfg, bot, msg, cmd)
-	case cmd != botcmd.CmdStart, status == telegram.StatusKicked:
+		if cmd != "" {
+			answerCommand(ctx, cfg, bot, msg, cmd)
+		}
+	case status == telegram.StatusKicked:
 		return
+	case cmd != botcmd.CmdStart:
+		if !status.InChat() && onboardingEnabled(cfg) {
+			if err := bot.SendPlain(ctx, msg.Chat.ID, botcmd.JoinHint); err != nil {
+				log.Printf("webhook: send join hint: %v", err)
+			}
+		}
 	case onboardingEnabled(cfg):
 		withFlow(ctx, cfg, bot, "start", func(f onboard.Flow) error {
 			return f.Start(ctx, msg.From, status)

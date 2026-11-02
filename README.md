@@ -45,7 +45,7 @@ task fmt               # gofmt
 task tidy              # tidy dependencies
 task migrate           # apply database migrations
 task seed -- -dry      # seed / regenerate the schedule (flags after --)
-task setcommands       # command menu for the group only, none elsewhere (manual)
+task setcommands       # command menu for the group, /start in private (manual)
 task setwebhook        # re-register the webhook with the update kinds the bot handles (manual)
 task mcp               # run the MCP server (started by an MCP client, not by hand)
 ```
@@ -68,11 +68,13 @@ nothing. In private they answer only admins of the group (`creator` /
 `administrator`, checked with `getChatMember` on every command). An admin's
 `/start` shows the command list and sets the command menu for that chat. A
 member's `/start` gets a greeting, a banned user's nothing, anybody else's
-starts the onboarding.
+starts the onboarding. Anything else such a person writes is answered with a
+pointer to `/start` while the onboarding is on.
 
-`task setcommands` sets the menu for the group and removes it from the broad
-scopes (default, private chats, groups, group admins), so strangers see none;
-`-- -show` prints the broad scopes.
+`task setcommands` sets the menu for the group, gives every private chat a
+menu with `/start` alone (Telegram's Start button only shows in a fresh chat)
+and removes the menu from the other broad scopes (default, groups, group
+admins); `-- -show` prints the broad scopes.
 
 ## Onboarding
 
