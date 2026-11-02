@@ -54,11 +54,13 @@ type Flow struct {
 	Now     func() time.Time
 }
 
-// Callback data actions: "approve:<user id>", "reject:<user id>", "room:<n>".
+// Callback data actions: "approve:<user id>", "reject:<user id>", "room:<n>",
+// "change:<user id>" (pick the room again before joining).
 const (
 	actApprove = "approve"
 	actReject  = "reject"
 	actRoom    = "room"
+	actChange  = "change"
 )
 
 // Sent as plain text: names and links would trip Markdown.
@@ -166,6 +168,13 @@ func (f Flow) Callback(ctx context.Context, q *telegram.CallbackQuery) (err erro
 		}
 		notice, err = f.chooseRoom(ctx, q, int(arg))
 		return err
+	case actChange:
+		if q.Message.Chat.ID != q.From.ID || arg != q.From.ID {
+			notice = msgNotAllowed
+			return nil
+		}
+		notice, err = f.changeRoom(ctx, q.From.ID)
+		return err
 	}
 	return nil
 }
@@ -217,6 +226,19 @@ func (f Flow) chooseRoom(ctx context.Context, q *telegram.CallbackQuery, room in
 	return "", f.sendLink(ctx, uid)
 }
 
+// changeRoom shows the room buttons again to an approved user who has not
+// joined yet. Their link stays valid: the room is read when they join.
+func (f Flow) changeRoom(ctx context.Context, uid int64) (string, error) {
+	u, _, err := users.Get(ctx, f.DB, uid)
+	if err != nil {
+		return msgTryLater, fmt.Errorf("read user: %w", err)
+	}
+	if u.Status != users.StatusApproved {
+		return msgNotAllowed, nil // joined, or never approved
+	}
+	return "", f.Bot.SendKeyboard(ctx, uid, msgAskRoom, roomKeyboard())
+}
+
 // JoinRequest approves a join request from an approved user with a room and
 // leaves every other request to a human admin.
 func (f Flow) JoinRequest(ctx context.Context, r *telegram.ChatJoinRequest) error {
@@ -262,7 +284,7 @@ func (f Flow) sendLink(ctx context.Context, uid int64) error {
 		return f.failed(ctx, uid, fmt.Errorf("read user: %w", err))
 	}
 	if u.InviteLink != "" && u.InviteExpires.After(f.Now().Add(linkMinLeft)) {
-		return f.Bot.SendPlain(ctx, uid, linkMessage(u.InviteLink, u.InviteExpires))
+		return f.Bot.SendKeyboard(ctx, uid, linkMessage(u.InviteLink, u.InviteExpires, u.Room), changeKeyboard(uid))
 	}
 	expires := f.Now().Add(LinkTTL).Truncate(time.Second) // what Telegram keeps
 	link, err := f.Bot.CreateJoinRequestLink(ctx, f.GroupID, fmt.Sprintf("Onboarding %d", uid), expires)
@@ -283,17 +305,25 @@ func (f Flow) sendLink(ctx context.Context, uid int64) error {
 			errs = append(errs, fmt.Errorf("revoke previous link: %w", err))
 		}
 	}
-	err = f.Bot.SendPlain(ctx, uid, linkMessage(link, expires))
+	err = f.Bot.SendKeyboard(ctx, uid, linkMessage(link, expires, u.Room), changeKeyboard(uid))
 	return errors.Join(append(errs, err)...)
 }
 
-// linkMessage hands the user their link, with its expiry in Berlin time.
-func linkMessage(link string, expires time.Time) string {
+// linkMessage hands the user their link, with its expiry in Berlin time and
+// the room they picked.
+func linkMessage(link string, expires time.Time, room int) string {
 	if loc, err := time.LoadLocation("Europe/Berlin"); err == nil {
 		expires = expires.In(loc)
 	}
-	return "Hier ist dein Link zur WG-Gruppe, gültig bis " + expires.Format("02.01. 15:04") + " Uhr:\n" + link +
+	return fmt.Sprintf("Dein Zimmer: %d.\n\n", room) +
+		"Hier ist dein Link zur WG-Gruppe, gültig bis " + expires.Format("02.01. 15:04") + " Uhr:\n" + link +
 		"\n\nÖffne ihn und tippe auf „Beitritt anfragen“ – ich lasse dich dann sofort rein."
+}
+
+// changeKeyboard sits under the link: a wrong room can be fixed until the
+// user joins.
+func changeKeyboard(uid int64) [][]telegram.Button {
+	return [][]telegram.Button{{{Text: "Zimmer ändern", Data: actChange + ":" + strconv.FormatInt(uid, 10)}}}
 }
 
 // failed tells the user something went wrong and returns err for the log.
@@ -363,7 +393,7 @@ func parseData(data string) (act string, arg int64, ok bool) {
 		return "", 0, false
 	}
 	switch act {
-	case actApprove, actReject, actRoom:
+	case actApprove, actReject, actRoom, actChange:
 	default:
 		return "", 0, false
 	}

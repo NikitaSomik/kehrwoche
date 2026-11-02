@@ -644,3 +644,58 @@ func TestRoomKeyboardOffersEveryRoomOnce(t *testing.T) {
 		t.Errorf("got %d rooms, want 8", len(seen))
 	}
 }
+
+func TestCallbackChangeRoom(t *testing.T) {
+	ctx := context.Background()
+	change := fmt.Sprintf("%s:%d", actChange, userID)
+	live := func() users.User {
+		return users.User{Status: users.StatusApproved, Room: 3, InviteLink: "https://t.me/+old", InviteExpires: time.Now().Add(LinkTTL)}
+	}
+
+	t.Run("an approved user picks again and keeps their link", func(t *testing.T) {
+		bot, db := &fakeBot{}, newDB(map[int64]users.User{userID: live()})
+		f := flow(bot, db)
+
+		if err := f.Callback(ctx, press(userID, userID, change)); err != nil {
+			t.Fatal(err)
+		}
+		if got := bot.last(); got.chatID != userID || len(got.rows) != 2 {
+			t.Fatalf("got %+v, want the room keyboard", got)
+		}
+		if err := f.Callback(ctx, press(userID, userID, "room:5")); err != nil {
+			t.Fatal(err)
+		}
+		got := bot.last()
+		if db.rows[userID].Room != 5 || bot.links != 0 || len(bot.revoked) != 0 {
+			t.Errorf("room %d, links %d, revoked %v", db.rows[userID].Room, bot.links, bot.revoked)
+		}
+		if !strings.Contains(got.text, "Dein Zimmer: 5.") || !strings.Contains(got.text, "https://t.me/+old") {
+			t.Errorf("link message %q", got.text)
+		}
+		if len(got.rows) != 1 || got.rows[0][0].Data != change {
+			t.Errorf("link message buttons %+v, want Zimmer ändern", got.rows)
+		}
+	})
+
+	t.Run("someone else's button is refused", func(t *testing.T) {
+		bot, db := &fakeBot{}, newDB(map[int64]users.User{userID: live()})
+
+		if err := flow(bot, db).Callback(ctx, press(userID+1, userID+1, change)); err != nil {
+			t.Fatal(err)
+		}
+		if len(bot.sent) != 0 || bot.answers[0] != msgNotAllowed {
+			t.Errorf("sent %+v, answer %q", bot.sent, bot.answers[0])
+		}
+	})
+
+	t.Run("after joining the button does nothing", func(t *testing.T) {
+		bot, db := &fakeBot{}, newDB(map[int64]users.User{userID: {Room: 3}})
+
+		if err := flow(bot, db).Callback(ctx, press(userID, userID, change)); err != nil {
+			t.Fatal(err)
+		}
+		if len(bot.sent) != 0 || bot.answers[0] != msgNotAllowed {
+			t.Errorf("sent %+v, answer %q", bot.sent, bot.answers[0])
+		}
+	})
+}

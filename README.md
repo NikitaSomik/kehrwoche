@@ -84,7 +84,8 @@ A new resident opens the bot and sends `/start`:
 2. ✅ — they pick their room from buttons 1–8. ❌ — they are told once; after
    that the bot ignores their `/start` (the `rejected` status is the block list).
 3. The bot sends them a personal join-request link (valid 24 h; another
-   `/start` sends the same one until it is nearly expired). It approves
+   `/start` sends the same one until it is nearly expired). Until they join,
+   a „Zimmer ändern“ button under it lets them pick the room again. It approves
    their request only if it comes from them through that link, revokes the
    link, sets their member tag to the room number (`3`) and greets them in the
    group. Any other join request is left to you.
@@ -118,6 +119,8 @@ flowchart TD
     link -- "no" --> newlink["New join-request link, 24 h<br/>old link revoked"]
     resend --> join
     newlink --> join(["User opens the link:<br/>chat_join_request"])
+    resend -. "Zimmer ändern" .-> rooms
+    newlink -. "Zimmer ändern" .-> rooms
 
     join --> check{"From this user, status approved,<br/>room set, through their exact link?"}
     check -- "no" --> manual(["Left to the group admins"])
