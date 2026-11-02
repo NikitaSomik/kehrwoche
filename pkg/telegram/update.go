@@ -18,10 +18,39 @@ import (
 // nil for kinds the bot ignores. allowed_updates (cmd/setwebhook) decides what
 // Telegram sends.
 type Update struct {
-	UpdateID        int              `json:"update_id"`
-	Message         *Message         `json:"message"`
-	CallbackQuery   *CallbackQuery   `json:"callback_query"`
-	ChatJoinRequest *ChatJoinRequest `json:"chat_join_request"`
+	UpdateID        int                `json:"update_id"`
+	Message         *Message           `json:"message"`
+	CallbackQuery   *CallbackQuery     `json:"callback_query"`
+	ChatJoinRequest *ChatJoinRequest   `json:"chat_join_request"`
+	ChatMember      *ChatMemberUpdated `json:"chat_member"`
+}
+
+// ChatMemberUpdated is a change in someone's membership of a chat. From is
+// who made it: the member themselves when they leave, an admin when they are
+// removed. Telegram sends it to bots that administer the chat.
+type ChatMemberUpdated struct {
+	Chat *Chat      `json:"chat"`
+	From *User      `json:"from"`
+	Old  ChatMember `json:"old_chat_member"`
+	New  ChatMember `json:"new_chat_member"`
+}
+
+type ChatMember struct {
+	User     *User  `json:"user"`
+	Status   string `json:"status"`
+	IsMember bool   `json:"is_member"`
+}
+
+// Role folds restricted into member while still in the chat and left
+// otherwise, as GetMemberStatus does.
+func (m ChatMember) Role() MemberStatus {
+	if m.Status == "restricted" {
+		if m.IsMember {
+			return StatusMember
+		}
+		return StatusLeft
+	}
+	return MemberStatus(m.Status)
 }
 
 // CallbackQuery is an inline button press. Data comes from the client and is
@@ -57,6 +86,7 @@ type Message struct {
 
 type User struct {
 	ID        int64  `json:"id"`
+	IsBot     bool   `json:"is_bot"`
 	FirstName string `json:"first_name"`
 	LastName  string `json:"last_name"`
 	Username  string `json:"username"`

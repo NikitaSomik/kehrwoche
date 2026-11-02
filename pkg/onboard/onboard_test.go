@@ -43,6 +43,9 @@ func (d *fakeDB) Exec(_ context.Context, sql string, args ...any) (pgconn.Comman
 	u, found := d.rows[id]
 	affected := false
 	switch {
+	case strings.Contains(sql, "INSERT INTO users (tg_user_id, left_at)"):
+		u.LeftAt = time.Now()
+		affected = true
 	case strings.Contains(sql, "INSERT INTO users (tg_user_id, status)"):
 		if !found || u.Status == users.StatusNone {
 			u.Status, u.Room = users.StatusPending, 0
@@ -50,7 +53,7 @@ func (d *fakeDB) Exec(_ context.Context, sql string, args ...any) (pgconn.Comman
 		}
 	case strings.Contains(sql, "SET status = NULL") && strings.Contains(sql, "status = 'approved'"):
 		if u.Status == users.StatusApproved {
-			u.Status, u.InviteLink, u.InviteExpires, u.JoinedAt = users.StatusNone, "", time.Time{}, time.Now()
+			u.Status, u.InviteLink, u.InviteExpires, u.JoinedAt, u.LeftAt = users.StatusNone, "", time.Time{}, time.Now(), time.Time{}
 			affected = true
 		}
 	case strings.Contains(sql, "SET invite_link = $2"):
@@ -113,6 +116,10 @@ func (r row) Scan(dest ...any) error {
 	if !r.u.JoinedAt.IsZero() {
 		joined := r.u.JoinedAt
 		*dest[4].(**time.Time) = &joined
+	}
+	if !r.u.LeftAt.IsZero() {
+		left := r.u.LeftAt
+		*dest[5].(**time.Time) = &left
 	}
 	return nil
 }
@@ -728,6 +735,102 @@ func TestCallbackChangeRoom(t *testing.T) {
 		}
 		if len(bot.sent) != 0 || bot.answers[0] != msgNotAllowed {
 			t.Errorf("sent %+v, answer %q", bot.sent, bot.answers[0])
+		}
+	})
+}
+
+func TestMemberUpdate(t *testing.T) {
+	ctx := context.Background()
+	anna := &telegram.User{ID: userID, FirstName: "Anna", Username: "anna"}
+	change := func(chat int64, from *telegram.User, oldStatus, newStatus string) *telegram.ChatMemberUpdated {
+		return &telegram.ChatMemberUpdated{
+			Chat: &telegram.Chat{ID: chat}, From: from,
+			Old: telegram.ChatMember{User: anna, Status: oldStatus},
+			New: telegram.ChatMember{User: anna, Status: newStatus},
+		}
+	}
+
+	t.Run("a member who leaves is noted and the admins hear of it", func(t *testing.T) {
+		bot, db := &fakeBot{}, newDB(map[int64]users.User{userID: {Room: 3, JoinedAt: time.Now()}})
+
+		if err := flow(bot, db).MemberUpdate(ctx, change(groupID, anna, "member", "left")); err != nil {
+			t.Fatal(err)
+		}
+		if db.rows[userID].LeftAt.IsZero() {
+			t.Error("left_at not set")
+		}
+		got := bot.last()
+		if got.chatID != adminID || got.text != "Anna (@anna) hat die WG-Gruppe verlassen.\nZimmer 3 – falls es frei wird, den Putzplan anpassen." {
+			t.Errorf("notice %+v", got)
+		}
+	})
+
+	t.Run("a member the bot never saw, removed by an admin", func(t *testing.T) {
+		bot, db := &fakeBot{}, newDB(nil)
+
+		if err := flow(bot, db).MemberUpdate(ctx, change(groupID, &telegram.User{ID: adminID}, "member", "kicked")); err != nil {
+			t.Fatal(err)
+		}
+		if db.rows[userID].LeftAt.IsZero() || !db.rows[userID].FormerMember() {
+			t.Errorf("row %+v", db.rows[userID])
+		}
+		if got := bot.last().text; got != "Anna (@anna) wurde aus der WG-Gruppe entfernt." {
+			t.Errorf("notice %q", got)
+		}
+	})
+
+	for name, u := range map[string]*telegram.ChatMemberUpdated{
+		"a join":          change(groupID, anna, "left", "member"),
+		"another chat":    change(groupID+1, anna, "member", "left"),
+		"a promotion":     change(groupID, anna, "member", "administrator"),
+		"a muted member":  {Chat: &telegram.Chat{ID: groupID}, Old: telegram.ChatMember{User: anna, Status: "member"}, New: telegram.ChatMember{User: anna, Status: "restricted", IsMember: true}},
+		"a bot that left": {Chat: &telegram.Chat{ID: groupID}, Old: telegram.ChatMember{User: &telegram.User{ID: 5, IsBot: true}, Status: "member"}, New: telegram.ChatMember{User: &telegram.User{ID: 5, IsBot: true}, Status: "left"}},
+	} {
+		t.Run(name+" is ignored", func(t *testing.T) {
+			bot, db := &fakeBot{}, newDB(nil)
+
+			if err := flow(bot, db).MemberUpdate(ctx, u); err != nil {
+				t.Fatal(err)
+			}
+			if len(bot.sent) != 0 || len(db.rows) != 0 {
+				t.Errorf("sent %+v, rows %v", bot.sent, db.rows)
+			}
+		})
+	}
+}
+
+func TestFormerMemberSeenLeaving(t *testing.T) {
+	ctx := context.Background()
+	left := time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC)
+
+	t.Run("the card gives the date they left", func(t *testing.T) {
+		bot, db := &fakeBot{}, newDB(map[int64]users.User{userID: {LeftAt: left}})
+
+		if err := flow(bot, db).Start(ctx, newcomer, telegram.StatusLeft); err != nil {
+			t.Fatal(err)
+		}
+		if card := bot.sent[0].text; !strings.HasSuffix(card, "War schon Mitglied der WG, ausgetreten am 02.11.2026.") {
+			t.Errorf("card %q", card)
+		}
+	})
+
+	t.Run("joining again clears left_at and they are welcomed back", func(t *testing.T) {
+		const link = "https://t.me/+link"
+		bot := &fakeBot{}
+		db := newDB(map[int64]users.User{userID: {Status: users.StatusApproved, Room: 2, InviteLink: link, LeftAt: left}})
+		r := &telegram.ChatJoinRequest{
+			Chat: &telegram.Chat{ID: groupID}, From: newcomer, UserChatID: userID,
+			InviteLink: &telegram.ChatInviteLink{InviteLink: link},
+		}
+
+		if err := flow(bot, db).JoinRequest(ctx, r); err != nil {
+			t.Fatal(err)
+		}
+		if !db.rows[userID].LeftAt.IsZero() || db.rows[userID].JoinedAt.IsZero() {
+			t.Errorf("row %+v", db.rows[userID])
+		}
+		if got := bot.last().text; got != "👋 Anna Muster ist wieder da! Zimmer 2." {
+			t.Errorf("greeting %q", got)
 		}
 	})
 }

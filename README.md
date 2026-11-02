@@ -96,12 +96,16 @@ A new resident opens the bot and sends `/start`:
 Someone already in the group who sends `/start` just gets a greeting. State
 lives in `users.status` / `users.room` / `users.invite_link` / `users.invite_expires_at`.
 
-Someone who was in the group before (`users.joined_at` is set when they join
-and never cleared) and asks again goes through the same steps, room choice
-included: the card says „War schon Mitglied der WG.“ and the group hears
-„👋 … ist wieder da!“ instead of the newcomer welcome. Leaving is not stored:
-the bot asks Telegram on every `/start`. A banned user stays silent until the
-ban is lifted in the group's removed users.
+When a member leaves the group or is removed, the bot sets `users.left_at`
+(creating the row for someone who joined before the bot did) and tells
+`ADMIN_CHAT_ID`, with their room if it knows it, so a move-out isn't missed
+in the rotation. Someone who was in the group before (`users.joined_at`,
+set when they join, or `left_at`) and asks again goes through the same steps,
+room choice included: the card says „War schon Mitglied der WG“ (with the
+date they left, when known) and the group hears „👋 … ist wieder da!“ instead
+of the newcomer welcome. Whether someone is in the group right now is still
+asked of Telegram on every `/start`. A banned user stays silent until the ban
+is lifted in the group's removed users.
 
 ```mermaid
 flowchart TD
@@ -141,8 +145,9 @@ One-time setup:
 
 - Make the bot a group admin with **Add Users** (`can_invite_users`) and
   **Edit Member Tags** (`can_manage_tags`).
-- `task setwebhook` — Telegram must send `callback_query` and
-  `chat_join_request`, which the default registration may not include.
+- `task setwebhook` — Telegram must send `callback_query`,
+  `chat_join_request` and `chat_member`; the default registration leaves
+  `chat_member` out.
   `task setwebhook -- -show` prints the current registration.
 - Set `ONBOARDING_ENABLED=true` in the Vercel dashboard and redeploy: Vercel
   applies a changed variable only to new deployments. `false` turns it off the

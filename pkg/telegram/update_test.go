@@ -155,6 +155,17 @@ func TestDecodeCallbackAndJoinRequest(t *testing.T) {
 	if r == nil || r.Chat.ID != -100 || r.From.ID != 7 || r.UserChatID != 7 || r.InviteLink.InviteLink != "https://t.me/+x" || r.InviteLink.Name != "Onboarding 7" {
 		t.Errorf("got %+v", r)
 	}
+
+	body = `{"update_id":3,"chat_member":{"chat":{"id":-100,"type":"supergroup"},"from":{"id":1},"date":1,"old_chat_member":{"status":"restricted","is_member":true,"user":{"id":7,"is_bot":false,"first_name":"Anna"}},"new_chat_member":{"status":"kicked","user":{"id":7,"first_name":"Anna"},"until_date":0}}}`
+	u = Update{}
+	if err := json.Unmarshal([]byte(body), &u); err != nil {
+		t.Fatal(err)
+	}
+	m := u.ChatMember
+	if m == nil || m.Chat.ID != -100 || m.From.ID != 1 || m.New.User.ID != 7 ||
+		m.Old.Role() != StatusMember || m.New.Role() != StatusKicked {
+		t.Errorf("got %+v", m)
+	}
 }
 
 func TestUserName(t *testing.T) {

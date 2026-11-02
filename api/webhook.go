@@ -62,6 +62,10 @@ func Webhook(w http.ResponseWriter, r *http.Request) {
 		withFlow(ctx, cfg, bot, "join request", func(f onboard.Flow) error {
 			return f.JoinRequest(ctx, update.ChatJoinRequest)
 		})
+	case update.ChatMember != nil:
+		withFlow(ctx, cfg, bot, "member update", func(f onboard.Flow) error {
+			return f.MemberUpdate(ctx, update.ChatMember)
+		})
 	case update.Message != nil:
 		handleMessage(ctx, cfg, bot, update.Message)
 	}

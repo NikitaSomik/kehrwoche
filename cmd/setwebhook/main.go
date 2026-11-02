@@ -20,7 +20,7 @@ import (
 )
 
 // allowedUpdates must list every update kind api/webhook.go handles.
-var allowedUpdates = []string{"message", "callback_query", "chat_join_request"}
+var allowedUpdates = []string{"message", "callback_query", "chat_join_request", "chat_member"}
 
 func main() {
 	show := flag.Bool("show", false, "print the current webhook registration and exit")
