@@ -568,7 +568,6 @@ func TestJoinRequest(t *testing.T) {
 		if got := bot.last(); got.chatID != groupID || !strings.Contains(got.text, "Anna Muster") || !strings.Contains(got.text, "Zimmer 4") {
 			t.Errorf("greeting %+v", got)
 		}
-		// The approval and the link are spent.
 		if got := db.rows[userID]; got != (users.User{Room: 4}) {
 			t.Errorf("row after joining: %+v", got)
 		}

@@ -90,7 +90,6 @@ func FormatHorizonWarning(gaps []HorizonGap) string {
 // migrations/0003_onboarding.sql repeats it — change both together.
 const RoomCount = 8
 
-// ValidRoom reports whether n is one of the flat's rooms.
 func ValidRoom(n int) bool {
 	return n >= 1 && n <= RoomCount
 }

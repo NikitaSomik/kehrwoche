@@ -33,7 +33,6 @@ type CallbackQuery struct {
 	Data    string   `json:"data"`
 }
 
-// ChatJoinRequest is a request to join a chat via a link that needs approval.
 type ChatJoinRequest struct {
 	Chat       *Chat           `json:"chat"`
 	From       *User           `json:"from"`

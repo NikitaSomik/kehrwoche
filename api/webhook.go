@@ -18,7 +18,6 @@ import (
 	"github.com/NikitaSomik/kehrwoche/pkg/users"
 )
 
-// maxUpdateBytes caps the request body the webhook decodes.
 const maxUpdateBytes = 1 << 20
 
 func Webhook(w http.ResponseWriter, r *http.Request) {
@@ -121,7 +120,6 @@ var memberStatus = func(ctx context.Context, bot telegram.Client, chatID, userID
 	return bot.GetMemberStatus(ctx, chatID, userID)
 }
 
-// answerCommand answers /help or a duty command; anything else is ignored.
 func answerCommand(ctx context.Context, cfg config.Config, bot telegram.Client, msg *telegram.Message, cmd string) {
 	if reply, ok := botcmd.StaticReply(cmd, msg.Chat.IsPrivate()); ok {
 		if err := bot.SendPlain(ctx, msg.Chat.ID, reply); err != nil {
@@ -166,16 +164,12 @@ func onboardingEnabled(cfg config.Config) bool {
 	return ok
 }
 
-// onboardingChats returns the WG group and the chat the approval cards go
-// to, which may be the admin's private chat or a group of admins.
 func onboardingChats(cfg config.Config) (groupID, adminID int64, ok bool) {
 	groupID, okGroup := cfg.GroupID()
 	adminID, okAdmin := cfg.AdminID()
 	return groupID, adminID, okGroup && okAdmin
 }
 
-// withFlow runs one onboarding step on its own DB connection and logs its
-// error under what.
 func withFlow(ctx context.Context, cfg config.Config, bot telegram.Client, what string, step func(onboard.Flow) error) {
 	groupID, adminID, ok := onboardingChats(cfg)
 	if !ok {
@@ -197,9 +191,8 @@ func withFlow(ctx context.Context, cfg config.Config, bot telegram.Client, what 
 	}
 }
 
-// recordUser stores the sender's Telegram id the first time it is seen.
-// Failures are logged and nothing more: knowing who uses the bot must never
-// cost somebody an answer.
+// recordUser only logs a failure: knowing who uses the bot must never cost
+// somebody an answer.
 func recordUser(ctx context.Context, conn users.Execer, msg *telegram.Message) {
 	if msg.From == nil {
 		return

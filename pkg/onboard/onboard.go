@@ -45,7 +45,6 @@ const (
 	linkMinLeft = time.Hour
 )
 
-// Flow handles the onboarding updates of one webhook call.
 type Flow struct {
 	Bot     Bot
 	DB      users.Querier
@@ -276,8 +275,9 @@ func (f Flow) JoinRequest(ctx context.Context, r *telegram.ChatJoinRequest) erro
 	return errors.Join(errs...)
 }
 
-// sendLink issues a fresh join-request link, stores it as the only one the
-// user may join through, and revokes the previous one.
+// sendLink resends the stored link while it lasts; otherwise it issues a new
+// one, stores it as the only one the user may join through, and revokes the
+// old one.
 func (f Flow) sendLink(ctx context.Context, uid int64) error {
 	u, _, err := users.Get(ctx, f.DB, uid)
 	if err != nil {
@@ -309,8 +309,6 @@ func (f Flow) sendLink(ctx context.Context, uid int64) error {
 	return errors.Join(append(errs, err)...)
 }
 
-// linkMessage hands the user their link, with its expiry in Berlin time and
-// the room they picked.
 func linkMessage(link string, expires time.Time, room int) string {
 	if loc, err := time.LoadLocation("Europe/Berlin"); err == nil {
 		expires = expires.In(loc)
@@ -326,7 +324,6 @@ func changeKeyboard(uid int64) [][]telegram.Button {
 	return [][]telegram.Button{{{Text: "Zimmer ändern", Data: actChange + ":" + strconv.FormatInt(uid, 10)}}}
 }
 
-// failed tells the user something went wrong and returns err for the log.
 func (f Flow) failed(ctx context.Context, uid int64, err error) error {
 	if serr := f.Bot.SendPlain(ctx, uid, msgTryLater); serr != nil {
 		err = errors.Join(err, fmt.Errorf("tell user: %w", serr))
@@ -334,7 +331,6 @@ func (f Flow) failed(ctx context.Context, uid int64, err error) error {
 	return err
 }
 
-// Tag is the member tag for a room: the bare number.
 func Tag(room int) string {
 	return strconv.Itoa(room)
 }
@@ -373,7 +369,6 @@ func decisionKeyboard(uid int64, withProfile bool) [][]telegram.Button {
 	})
 }
 
-// roomKeyboard lays the rooms out four to a row.
 func roomKeyboard() [][]telegram.Button {
 	var rows [][]telegram.Button
 	for n := 1; n <= schedule.RoomCount; n++ {

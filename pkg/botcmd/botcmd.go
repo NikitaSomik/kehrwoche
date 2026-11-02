@@ -132,7 +132,6 @@ func StaticReply(cmd string, private bool) (string, bool) {
 	return "", false
 }
 
-// AdminStartReply is the admin's /start: the greeting and the command list.
 func AdminStartReply() string {
 	return startMessage + "\n\n" + helpMessage
 }

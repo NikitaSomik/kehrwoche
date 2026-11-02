@@ -16,7 +16,6 @@ type Execer interface {
 	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
 }
 
-// Querier adds single-row reads to Execer.
 type Querier interface {
 	Execer
 	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
@@ -89,7 +88,6 @@ func RequestJoin(ctx context.Context, conn Execer, tgUserID int64) (changed bool
 	))
 }
 
-// CancelRequest moves a pending user back to no status.
 func CancelRequest(ctx context.Context, conn Execer, tgUserID int64) error {
 	_, err := conn.Exec(ctx,
 		`UPDATE users SET status = NULL, updated_at = now()
@@ -99,7 +97,6 @@ func CancelRequest(ctx context.Context, conn Execer, tgUserID int64) error {
 	return err
 }
 
-// Decide moves a pending user to approved or rejected.
 func Decide(ctx context.Context, conn Execer, tgUserID int64, approve bool) (changed bool, err error) {
 	status := StatusRejected
 	if approve {
@@ -112,7 +109,6 @@ func Decide(ctx context.Context, conn Execer, tgUserID int64, approve bool) (cha
 	))
 }
 
-// SetApprovedRoom stores the room of an approved user.
 func SetApprovedRoom(ctx context.Context, conn Execer, tgUserID int64, room int) (changed bool, err error) {
 	return applied(conn.Exec(ctx,
 		`UPDATE users SET room = $2, updated_at = now()
@@ -121,8 +117,6 @@ func SetApprovedRoom(ctx context.Context, conn Execer, tgUserID int64, room int)
 	))
 }
 
-// SetInviteLink stores the join-request link issued to an approved user and
-// when it expires.
 func SetInviteLink(ctx context.Context, conn Execer, tgUserID int64, link string, expires time.Time) (changed bool, err error) {
 	return applied(conn.Exec(ctx,
 		`UPDATE users SET invite_link = $2, invite_expires_at = $3, updated_at = now()

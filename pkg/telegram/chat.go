@@ -24,7 +24,6 @@ func ProfileURL(userID int64) string {
 	return "tg://user?id=" + strconv.FormatInt(userID, 10)
 }
 
-// SendKeyboard posts a plain-text message with an inline keyboard.
 func SendKeyboard(ctx context.Context, client *http.Client, token string, chatID int64, text string, rows [][]Button) error {
 	_, err := call(ctx, client, token, "sendMessage", map[string]any{
 		"chat_id":      chatID,
@@ -66,12 +65,10 @@ const (
 	StatusKicked        MemberStatus = "kicked"
 )
 
-// IsAdmin reports whether the user administers the chat.
 func (s MemberStatus) IsAdmin() bool {
 	return s == StatusCreator || s == StatusAdministrator
 }
 
-// InChat reports whether the user is currently in the chat.
 func (s MemberStatus) InChat() bool {
 	return s.IsAdmin() || s == StatusMember
 }
@@ -168,7 +165,6 @@ type WebhookInfo struct {
 	LastErrorMessage   string   `json:"last_error_message"`
 }
 
-// GetWebhookInfo returns the bot's current webhook registration.
 func GetWebhookInfo(ctx context.Context, client *http.Client, token string) (WebhookInfo, error) {
 	raw, err := call(ctx, client, token, "getWebhookInfo", map[string]any{})
 	if err != nil {
