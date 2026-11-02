@@ -1,13 +1,10 @@
-// Command setcommands pushes the bot's command menu to Telegram via
-// setMyCommands, built from the same list the webhook serves (botcmd.Menu).
-// It changes the bot's public config and hits the Telegram API — run it by hand.
+// Command setcommands sets the command menu for the WG group (CHAT_ID) and
+// removes it from every broad scope, so strangers see none. Group admins get
+// it in their own private chat when they send /start (api/webhook.go). It hits
+// the Telegram API — run it by hand.
 //
-//	task setcommands           # push the command menu
-//	task setcommands -- -show   # print Telegram's current menu, change nothing
-//
-// The list is pushed to every scope BotFather exposes (default + private chats
-// + group chats + group admins), so a scope-specific list left over from an
-// earlier BotFather edit can't shadow it.
+//	task setcommands           # menu for the group, none elsewhere
+//	task setcommands -- -show   # print Telegram's current menus, change nothing
 package main
 
 import (
@@ -45,9 +42,14 @@ func main() {
 }
 
 func run(ctx context.Context, show bool) error {
-	token := config.Load().TelegramToken
+	cfg := config.Load()
+	token := cfg.TelegramToken
 	if token == "" {
 		return fmt.Errorf("TELEGRAM_BOT_TOKEN is not set")
+	}
+	groupID, ok := cfg.GroupID()
+	if !ok {
+		return fmt.Errorf("CHAT_ID is not set or invalid")
 	}
 
 	if show {
@@ -68,18 +70,18 @@ func run(ctx context.Context, show bool) error {
 	}
 
 	cmds := botcmd.Menu()
-	for _, s := range menuScopes {
-		if err := telegram.SetCommands(ctx, http.DefaultClient, token, cmds, s); err != nil {
-			return fmt.Errorf("scope %s: %w", scopeName(s), err)
-		}
+	if err := telegram.SetChatCommands(ctx, http.DefaultClient, token, cmds, groupID); err != nil {
+		return fmt.Errorf("group: %w", err)
 	}
 	names := make([]string, len(menuScopes))
 	for i, s := range menuScopes {
+		if err := telegram.DeleteCommands(ctx, http.DefaultClient, token, s); err != nil {
+			return fmt.Errorf("scope %s: %w", scopeName(s), err)
+		}
 		names[i] = scopeName(s)
 	}
-	fmt.Printf("pushed %d commands to: %s\n", len(cmds), strings.Join(names, ", "))
-	for _, c := range cmds {
-		fmt.Printf("  %s - %s\n", c.Command, c.Description)
-	}
+	fmt.Printf("pushed %d commands to the group %d\n", len(cmds), groupID)
+	fmt.Printf("removed the menu from: %s\n", strings.Join(names, ", "))
+	fmt.Println("group admins get it in private with /start")
 	return nil
 }

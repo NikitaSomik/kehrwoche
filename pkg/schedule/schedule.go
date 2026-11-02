@@ -86,6 +86,14 @@ func FormatHorizonWarning(gaps []HorizonGap) string {
 	return b.String()
 }
 
+// RoomCount is the number of rooms, numbered 1..RoomCount. The CHECK in
+// migrations/0003_onboarding.sql repeats it — change both together.
+const RoomCount = 8
+
+func ValidRoom(n int) bool {
+	return n >= 1 && n <= RoomCount
+}
+
 func RoomNo(n int) string {
 	return fmt.Sprintf("Zimmer %d", n)
 }

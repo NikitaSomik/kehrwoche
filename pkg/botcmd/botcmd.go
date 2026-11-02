@@ -68,7 +68,7 @@ func Menu() []telegram.Command {
 	return append(out, telegram.Command{Command: "help", Description: "Alle Befehle anzeigen"})
 }
 
-const startMessage = "Hallo! Ich erinnere die WG daran, wer mit Putzen dran ist.\n\n/help zeigt alle Befehle."
+const startMessage = "Hallo! Ich erinnere die WG daran, wer mit Putzen dran ist."
 
 // helpMessage is built from duties so it can't drift from what the bot serves.
 // Sent with telegram.SendPlain (no Markdown) — the _plan command names contain
@@ -130,6 +130,10 @@ func StaticReply(cmd string, private bool) (string, bool) {
 		}
 	}
 	return "", false
+}
+
+func AdminStartReply() string {
+	return startMessage + "\n\n" + helpMessage
 }
 
 func wer(dutyType schedule.DutyType) Handler {

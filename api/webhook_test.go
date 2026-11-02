@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgconn"
 
+	"github.com/NikitaSomik/kehrwoche/pkg/config"
 	"github.com/NikitaSomik/kehrwoche/pkg/telegram"
 )
 
@@ -78,6 +80,9 @@ func TestWebhook_AuthorizedRequests(t *testing.T) {
 		{"unknown command", commandUpdateJSON("nope")},
 		{"/start in a group falls through and is ignored", commandUpdateJSON("start")},
 		{"known command, no DB available", commandUpdateJSON("toilette1")},
+		{"callback with onboarding off", `{"update_id":1,"callback_query":{"id":"x","from":{"id":1},"data":"room:3"}}`},
+		{"body over the cap", `{"update_id":1,"pad":"` + strings.Repeat("a", maxUpdateBytes) + `"}`},
+		{"join request with onboarding off", `{"update_id":1,"chat_join_request":{"chat":{"id":-100},"from":{"id":1},"user_chat_id":1}}`},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -141,4 +146,123 @@ func TestRecordUser(t *testing.T) {
 
 		recordUser(context.Background(), e, msg)
 	})
+}
+
+type apiCall struct{ method, body string }
+
+// recordingBot is a telegram.Client whose requests are recorded, not sent.
+func recordingBot(calls *[]apiCall) telegram.Client {
+	return telegram.Client{Token: "T", HTTP: &http.Client{Transport: roundTrip(func(r *http.Request) (*http.Response, error) {
+		b, _ := io.ReadAll(r.Body)
+		*calls = append(*calls, apiCall{method: r.URL.Path[strings.LastIndex(r.URL.Path, "/")+1:], body: string(b)})
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{"ok":true,"result":true}`))}, nil
+	})}}
+}
+
+type roundTrip func(*http.Request) (*http.Response, error)
+
+func (f roundTrip) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
+func TestHandleMessageRouting(t *testing.T) {
+	orig := memberStatus
+	t.Cleanup(func() { memberStatus = orig })
+
+	private := func(cmd string) *telegram.Message {
+		return &telegram.Message{
+			From: &telegram.User{ID: 7}, Chat: &telegram.Chat{ID: 7, Type: "private"}, Text: "/" + cmd,
+			Entities: []telegram.MessageEntity{{Type: "bot_command", Offset: 0, Length: len(cmd) + 1}},
+		}
+	}
+	inGroup := func(cmd string) *telegram.Message {
+		m := private(cmd)
+		m.Chat = &telegram.Chat{ID: -100, Type: "supergroup"}
+		return m
+	}
+	inOtherGroup := func(cmd string) *telegram.Message {
+		m := private(cmd)
+		m.Chat = &telegram.Chat{ID: -200, Type: "supergroup"}
+		return m
+	}
+	// ADMIN_CHAT_ID is left unset so /start from non-admins takes the plain
+	// greeting rather than the onboarding, which needs a database.
+	cfg := config.Config{ChatID: "-100"}
+
+	cases := []struct {
+		name    string
+		msg     *telegram.Message
+		status  telegram.MemberStatus
+		methods []string
+		contain string
+	}{
+		{"admin /start gets the menu and the command list", private("start"), telegram.StatusCreator, []string{"setMyCommands", "sendMessage"}, "/etage_plan"},
+		{"admin /help", private("help"), telegram.StatusAdministrator, []string{"sendMessage"}, "/etage"},
+		{"member /start is greeted", private("start"), telegram.StatusMember, []string{"sendMessage"}, "Hallo"},
+		{"member commands are ignored", private("help"), telegram.StatusMember, nil, ""},
+		{"stranger commands are ignored", private("etage"), telegram.StatusLeft, nil, ""},
+		{"banned /start is ignored", private("start"), telegram.StatusKicked, nil, ""},
+		{"anyone in the WG group gets /help", inGroup("help"), telegram.StatusMember, []string{"sendMessage"}, "/etage"},
+		{"/start in the WG group is ignored", inGroup("start"), telegram.StatusMember, nil, ""},
+		{"another group gets nothing", inOtherGroup("help"), telegram.StatusCreator, nil, ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			memberStatus = func(context.Context, telegram.Client, int64, int64) (telegram.MemberStatus, error) {
+				return tc.status, nil
+			}
+			var calls []apiCall
+			handleMessage(context.Background(), cfg, recordingBot(&calls), tc.msg)
+
+			var methods []string
+			for _, c := range calls {
+				methods = append(methods, c.method)
+			}
+			if strings.Join(methods, ",") != strings.Join(tc.methods, ",") {
+				t.Fatalf("calls %v, want %v", methods, tc.methods)
+			}
+			if tc.contain != "" && !strings.Contains(calls[len(calls)-1].body, tc.contain) {
+				t.Errorf("reply %s lacks %q", calls[len(calls)-1].body, tc.contain)
+			}
+		})
+	}
+
+	t.Run("a failed lookup answers nothing", func(t *testing.T) {
+		memberStatus = func(context.Context, telegram.Client, int64, int64) (telegram.MemberStatus, error) {
+			return "", errors.New("timeout")
+		}
+		var calls []apiCall
+		handleMessage(context.Background(), cfg, recordingBot(&calls), private("start"))
+		if len(calls) != 0 {
+			t.Errorf("calls %v", calls)
+		}
+	})
+
+	t.Run("CHAT_ID unset answers nothing", func(t *testing.T) {
+		var calls []apiCall
+		handleMessage(context.Background(), config.Config{}, recordingBot(&calls), private("start"))
+		if len(calls) != 0 {
+			t.Errorf("calls %v", calls)
+		}
+	})
+}
+
+func TestOnboardingChats(t *testing.T) {
+	cases := []struct {
+		name, group, admin string
+		enabled            bool
+		want               bool
+	}{
+		{"enabled, both set", "-1001", "42", true, true},
+		{"disabled", "-1001", "42", false, false},
+		{"admin unset", "-1001", "", true, false},
+		{"group unset", "", "42", true, false},
+		{"admin chat is a group", "-1001", "-1002", true, true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			_, _, ok := onboardingChats(config.Config{ChatID: c.group, AdminChatID: c.admin, OnboardingEnabled: c.enabled})
+			if ok != c.want {
+				t.Errorf("ok = %v, want %v", ok, c.want)
+			}
+		})
+	}
 }

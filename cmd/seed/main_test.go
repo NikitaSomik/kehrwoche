@@ -645,3 +645,20 @@ func TestAutoRegen(t *testing.T) {
 		})
 	}
 }
+
+// The onboarding offers rooms 1..schedule.RoomCount; the rotations must
+// draw from exactly those rooms.
+func TestRotationsUseEveryRoom(t *testing.T) {
+	seen := map[int]bool{}
+	for duty, rooms := range rotations {
+		for _, r := range rooms {
+			if !schedule.ValidRoom(r) {
+				t.Errorf("%s: room %d is outside 1..%d", duty, r, schedule.RoomCount)
+			}
+			seen[r] = true
+		}
+	}
+	if len(seen) != schedule.RoomCount {
+		t.Errorf("rotations use %d rooms, schedule.RoomCount is %d", len(seen), schedule.RoomCount)
+	}
+}
