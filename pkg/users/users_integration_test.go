@@ -136,6 +136,27 @@ func TestOnboardingTransitions(t *testing.T) {
 	// A former member picks the room again; joined_at stays.
 	mustGet(users.User{Status: users.StatusPending, JoinedAt: time.Now()})
 
+	// Leaving is recorded, also for a member the bot has never seen, and a
+	// join through the onboarding clears it.
+	const oldTimer = int64(557)
+	for _, uid := range []int64{id, oldTimer} {
+		if err := users.MarkLeft(ctx, conn, uid); err != nil {
+			t.Fatal(err)
+		}
+		if u, found, err := users.Get(ctx, conn, uid); err != nil || !found || u.LeftAt.IsZero() || !u.FormerMember() {
+			t.Errorf("user %d after leaving: %+v found=%v err=%v", uid, u, found, err)
+		}
+	}
+	if _, err := conn.Exec(ctx, `UPDATE users SET status = 'approved' WHERE tg_user_id = $1`, id); err != nil {
+		t.Fatal(err)
+	}
+	if ok, err := users.MarkJoined(ctx, conn, id); err != nil || !ok {
+		t.Fatalf("joined again: ok=%v err=%v", ok, err)
+	}
+	if u, _, err := users.Get(ctx, conn, id); err != nil || !u.LeftAt.IsZero() {
+		t.Errorf("left_at after joining again: %+v err=%v", u, err)
+	}
+
 	for _, room := range []int{0, 9} {
 		if _, err := conn.Exec(ctx, `UPDATE users SET room = $2 WHERE tg_user_id = $1`, id, room); err == nil {
 			t.Errorf("room %d passed the CHECK", room)

@@ -82,6 +82,7 @@ func TestWebhook_AuthorizedRequests(t *testing.T) {
 		{"known command, no DB available", commandUpdateJSON("toilette1")},
 		{"callback with onboarding off", `{"update_id":1,"callback_query":{"id":"x","from":{"id":1},"data":"room:3"}}`},
 		{"body over the cap", `{"update_id":1,"pad":"` + strings.Repeat("a", maxUpdateBytes) + `"}`},
+		{"member update with onboarding off", `{"update_id":1,"chat_member":{"chat":{"id":-100},"from":{"id":1},"old_chat_member":{"status":"member","user":{"id":1}},"new_chat_member":{"status":"left","user":{"id":1}}}}`},
 		{"join request with onboarding off", `{"update_id":1,"chat_join_request":{"chat":{"id":-100},"from":{"id":1},"user_chat_id":1}}`},
 	}
 	for _, tc := range cases {

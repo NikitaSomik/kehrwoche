@@ -109,7 +109,7 @@ func (f Flow) Start(ctx context.Context, from *telegram.User, status telegram.Me
 	if !created { // a concurrent /start filed it
 		return f.Bot.SendPlain(ctx, uid, msgPending)
 	}
-	card := requestCard(from, !u.JoinedAt.IsZero())
+	card := requestCard(from, u)
 	err = f.Bot.SendKeyboard(ctx, f.AdminID, card, decisionKeyboard(uid, true))
 	if err != nil {
 		// Most likely the user's privacy settings refuse the profile button.
@@ -238,6 +238,26 @@ func (f Flow) changeRoom(ctx context.Context, uid int64) (string, error) {
 	return "", f.Bot.SendKeyboard(ctx, uid, msgAskRoom, roomKeyboard())
 }
 
+// MemberUpdate notes a member leaving the WG group or being removed from it:
+// left_at for the next request, and a notice to the admins, who may have a
+// room to take out of the rotation. Joins and other chats are ignored.
+func (f Flow) MemberUpdate(ctx context.Context, u *telegram.ChatMemberUpdated) error {
+	who := u.New.User
+	if u.Chat == nil || u.Chat.ID != f.GroupID || who == nil || who.IsBot ||
+		!u.Old.Role().InChat() || u.New.Role().InChat() {
+		return nil
+	}
+	row, _, err := users.Get(ctx, f.DB, who.ID)
+	if err != nil {
+		return fmt.Errorf("read user: %w", err)
+	}
+	if err := users.MarkLeft(ctx, f.DB, who.ID); err != nil {
+		return fmt.Errorf("mark left: %w", err)
+	}
+	removed := u.New.Role() == telegram.StatusKicked || (u.From != nil && u.From.ID != who.ID)
+	return f.Bot.SendPlain(ctx, f.AdminID, leftNotice(who, row.Room, removed))
+}
+
 // JoinRequest approves a join request from an approved user with a room and
 // leaves every other request to a human admin.
 func (f Flow) JoinRequest(ctx context.Context, r *telegram.ChatJoinRequest) error {
@@ -269,7 +289,7 @@ func (f Flow) JoinRequest(ctx context.Context, r *telegram.ChatJoinRequest) erro
 	if err := f.Bot.SetMemberTag(ctx, f.GroupID, uid, Tag(u.Room)); err != nil {
 		errs = append(errs, fmt.Errorf("set tag: %w", err))
 	}
-	if err := f.Bot.SendPlain(ctx, f.GroupID, welcome(r.From, u.Room, !u.JoinedAt.IsZero())); err != nil {
+	if err := f.Bot.SendPlain(ctx, f.GroupID, welcome(r.From, u.Room, u.FormerMember())); err != nil {
 		errs = append(errs, fmt.Errorf("welcome: %w", err))
 	}
 	return errors.Join(errs...)
@@ -310,9 +330,7 @@ func (f Flow) sendLink(ctx context.Context, uid int64) error {
 }
 
 func linkMessage(link string, expires time.Time, room int) string {
-	if loc, err := time.LoadLocation("Europe/Berlin"); err == nil {
-		expires = expires.In(loc)
-	}
+	expires = berlin(expires)
 	return fmt.Sprintf("Dein Zimmer: %d.\n\n", room) +
 		"Hier ist dein Link zur WG-Gruppe, gültig bis " + expires.Format("02.01. 15:04") + " Uhr:\n" + link +
 		"\n\nÖffne ihn und tippe auf „Beitritt anfragen“ – ich lasse dich dann sofort rein."
@@ -335,7 +353,7 @@ func Tag(room int) string {
 	return strconv.Itoa(room)
 }
 
-func requestCard(u *telegram.User, returning bool) string {
+func requestCard(u *telegram.User, row users.User) string {
 	var b strings.Builder
 	b.WriteString("Neue Anfrage für die WG-Gruppe:\n")
 	b.WriteString(u.Name())
@@ -343,10 +361,37 @@ func requestCard(u *telegram.User, returning bool) string {
 		b.WriteString(" (@" + u.Username + ")")
 	}
 	fmt.Fprintf(&b, "\nID: %d", u.ID)
-	if returning {
+	switch {
+	case !row.LeftAt.IsZero():
+		b.WriteString("\nWar schon Mitglied der WG, ausgetreten am " + berlin(row.LeftAt).Format("02.01.2006") + ".")
+	case row.FormerMember():
 		b.WriteString("\nWar schon Mitglied der WG.")
 	}
 	return b.String()
+}
+
+func leftNotice(u *telegram.User, room int, removed bool) string {
+	var b strings.Builder
+	b.WriteString(u.Name())
+	if u.Username != "" {
+		b.WriteString(" (@" + u.Username + ")")
+	}
+	if removed {
+		b.WriteString(" wurde aus der WG-Gruppe entfernt.")
+	} else {
+		b.WriteString(" hat die WG-Gruppe verlassen.")
+	}
+	if room > 0 {
+		fmt.Fprintf(&b, "\nZimmer %d – falls es frei wird, den Putzplan anpassen.", room)
+	}
+	return b.String()
+}
+
+func berlin(t time.Time) time.Time {
+	if loc, err := time.LoadLocation("Europe/Berlin"); err == nil {
+		return t.In(loc)
+	}
+	return t
 }
 
 func welcome(u *telegram.User, room int, returning bool) string {

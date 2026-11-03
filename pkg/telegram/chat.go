@@ -84,21 +84,12 @@ func GetMemberStatus(ctx context.Context, client *http.Client, token string, cha
 		return "", err
 	}
 	var out struct {
-		Result struct {
-			Status   string `json:"status"`
-			IsMember bool   `json:"is_member"`
-		} `json:"result"`
+		Result ChatMember `json:"result"`
 	}
 	if err := json.Unmarshal(raw, &out); err != nil {
 		return "", fmt.Errorf("telegram: decode getChatMember: %w", err)
 	}
-	if out.Result.Status == "restricted" {
-		if out.Result.IsMember {
-			return StatusMember, nil
-		}
-		return StatusLeft, nil
-	}
-	return MemberStatus(out.Result.Status), nil
+	return out.Result.Role(), nil
 }
 
 // SetMemberTag sets a regular member's tag (Bot API 9.5): 0-16 characters,

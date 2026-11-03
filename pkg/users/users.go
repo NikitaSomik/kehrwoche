@@ -40,6 +40,13 @@ type User struct {
 	InviteLink    string
 	InviteExpires time.Time
 	JoinedAt      time.Time
+	LeftAt        time.Time
+}
+
+// FormerMember reports whether the user was in the WG group before: joined
+// through the onboarding, or seen leaving it.
+func (u User) FormerMember() bool {
+	return !u.JoinedAt.IsZero() || !u.LeftAt.IsZero()
 }
 
 // Record stores tgUserID on first sight and moves updated_at on every later
@@ -56,12 +63,12 @@ func Record(ctx context.Context, conn Execer, tgUserID int64) error {
 // Get returns the user's row; found is false for an unknown id.
 func Get(ctx context.Context, conn Querier, tgUserID int64) (u User, found bool, err error) {
 	var status string
-	var expires, joined *time.Time
+	var expires, joined, left *time.Time
 	err = conn.QueryRow(ctx,
-		`SELECT COALESCE(status, ''), COALESCE(room, 0), COALESCE(invite_link, ''), invite_expires_at, joined_at
+		`SELECT COALESCE(status, ''), COALESCE(room, 0), COALESCE(invite_link, ''), invite_expires_at, joined_at, left_at
 		 FROM users WHERE tg_user_id = $1`,
 		tgUserID,
-	).Scan(&status, &u.Room, &u.InviteLink, &expires, &joined)
+	).Scan(&status, &u.Room, &u.InviteLink, &expires, &joined, &left)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return User{}, false, nil
 	}
@@ -74,6 +81,9 @@ func Get(ctx context.Context, conn Querier, tgUserID int64) (u User, found bool,
 	}
 	if joined != nil {
 		u.JoinedAt = *joined
+	}
+	if left != nil {
+		u.LeftAt = *left
 	}
 	return u, true, nil
 }
@@ -135,10 +145,21 @@ func SetInviteLink(ctx context.Context, conn Execer, tgUserID int64, link string
 func MarkJoined(ctx context.Context, conn Execer, tgUserID int64) (changed bool, err error) {
 	return applied(conn.Exec(ctx,
 		`UPDATE users SET status = NULL, invite_link = NULL, invite_expires_at = NULL,
-		     joined_at = now(), updated_at = now()
+		     joined_at = now(), left_at = NULL, updated_at = now()
 		 WHERE tg_user_id = $1 AND status = 'approved'`,
 		tgUserID,
 	))
+}
+
+// MarkLeft records that the user left the WG group or was removed from it,
+// creating the row for a member the bot has never seen.
+func MarkLeft(ctx context.Context, conn Execer, tgUserID int64) error {
+	_, err := conn.Exec(ctx,
+		`INSERT INTO users (tg_user_id, left_at) VALUES ($1, now())
+		 ON CONFLICT (tg_user_id) DO UPDATE SET left_at = now(), updated_at = now()`,
+		tgUserID,
+	)
+	return err
 }
 
 func applied(tag pgconn.CommandTag, err error) (bool, error) {
