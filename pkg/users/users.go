@@ -33,12 +33,13 @@ const (
 )
 
 // User is a row as the onboarding reads it. Room is 0, InviteLink empty and
-// InviteExpires zero when unset.
+// the times zero when unset. JoinedAt survives leaving the group.
 type User struct {
 	Status        Status
 	Room          int
 	InviteLink    string
 	InviteExpires time.Time
+	JoinedAt      time.Time
 }
 
 // Record stores tgUserID on first sight and moves updated_at on every later
@@ -55,12 +56,12 @@ func Record(ctx context.Context, conn Execer, tgUserID int64) error {
 // Get returns the user's row; found is false for an unknown id.
 func Get(ctx context.Context, conn Querier, tgUserID int64) (u User, found bool, err error) {
 	var status string
-	var expires *time.Time
+	var expires, joined *time.Time
 	err = conn.QueryRow(ctx,
-		`SELECT COALESCE(status, ''), COALESCE(room, 0), COALESCE(invite_link, ''), invite_expires_at
+		`SELECT COALESCE(status, ''), COALESCE(room, 0), COALESCE(invite_link, ''), invite_expires_at, joined_at
 		 FROM users WHERE tg_user_id = $1`,
 		tgUserID,
-	).Scan(&status, &u.Room, &u.InviteLink, &expires)
+	).Scan(&status, &u.Room, &u.InviteLink, &expires, &joined)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return User{}, false, nil
 	}
@@ -71,18 +72,22 @@ func Get(ctx context.Context, conn Querier, tgUserID int64) (u User, found bool,
 	if expires != nil {
 		u.InviteExpires = *expires
 	}
+	if joined != nil {
+		u.JoinedAt = *joined
+	}
 	return u, true, nil
 }
 
 // The transitions below are each one conditional statement. changed reports
 // whether it applied, so a double press or a race can't act twice.
 
-// RequestJoin moves a user with no status to pending. changed is true only
-// for the call that filed the request.
+// RequestJoin moves a user with no status to pending and forgets the room of
+// an earlier request, which they pick again. changed is true only for the
+// call that filed the request.
 func RequestJoin(ctx context.Context, conn Execer, tgUserID int64) (changed bool, err error) {
 	return applied(conn.Exec(ctx,
 		`INSERT INTO users (tg_user_id, status) VALUES ($1, 'pending')
-		 ON CONFLICT (tg_user_id) DO UPDATE SET status = 'pending', updated_at = now()
+		 ON CONFLICT (tg_user_id) DO UPDATE SET status = 'pending', room = NULL, updated_at = now()
 		 WHERE users.status IS NULL`,
 		tgUserID,
 	))
@@ -129,7 +134,8 @@ func SetInviteLink(ctx context.Context, conn Execer, tgUserID int64, link string
 // The approval and the link are spent: getting back in needs a new request.
 func MarkJoined(ctx context.Context, conn Execer, tgUserID int64) (changed bool, err error) {
 	return applied(conn.Exec(ctx,
-		`UPDATE users SET status = NULL, invite_link = NULL, invite_expires_at = NULL, updated_at = now()
+		`UPDATE users SET status = NULL, invite_link = NULL, invite_expires_at = NULL,
+		     joined_at = now(), updated_at = now()
 		 WHERE tg_user_id = $1 AND status = 'approved'`,
 		tgUserID,
 	))

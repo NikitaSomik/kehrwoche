@@ -236,6 +236,36 @@ func TestHandleMessageRouting(t *testing.T) {
 		}
 	})
 
+	t.Run("plain text outside the group points to /start while onboarding is on", func(t *testing.T) {
+		on := config.Config{ChatID: "-100", AdminChatID: "42", OnboardingEnabled: true}
+		text := func(chat *telegram.Chat) *telegram.Message {
+			return &telegram.Message{From: &telegram.User{ID: 7}, Chat: chat, Text: "hallo"}
+		}
+		for name, c := range map[string]struct {
+			cfg    config.Config
+			chat   *telegram.Chat
+			status telegram.MemberStatus
+			hint   bool
+		}{
+			"stranger":           {on, &telegram.Chat{ID: 7, Type: "private"}, telegram.StatusLeft, true},
+			"stranger, flag off": {cfg, &telegram.Chat{ID: 7, Type: "private"}, telegram.StatusLeft, false},
+			"member":             {on, &telegram.Chat{ID: 7, Type: "private"}, telegram.StatusMember, false},
+			"admin":              {on, &telegram.Chat{ID: 7, Type: "private"}, telegram.StatusCreator, false},
+			"banned":             {on, &telegram.Chat{ID: 7, Type: "private"}, telegram.StatusKicked, false},
+			"in the WG group":    {on, &telegram.Chat{ID: -100, Type: "supergroup"}, telegram.StatusLeft, false},
+		} {
+			memberStatus = func(context.Context, telegram.Client, int64, int64) (telegram.MemberStatus, error) {
+				return c.status, nil
+			}
+			var calls []apiCall
+			handleMessage(context.Background(), c.cfg, recordingBot(&calls), text(c.chat))
+			got := len(calls) == 1 && strings.Contains(calls[0].body, "/start")
+			if got != c.hint || (!c.hint && len(calls) != 0) {
+				t.Errorf("%s: calls %v, want hint=%v", name, calls, c.hint)
+			}
+		}
+	})
+
 	t.Run("CHAT_ID unset answers nothing", func(t *testing.T) {
 		var calls []apiCall
 		handleMessage(context.Background(), config.Config{}, recordingBot(&calls), private("start"))

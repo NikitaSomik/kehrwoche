@@ -22,7 +22,9 @@ import (
 
 // menuScopes: "" is the default scope; the rest are the BotCommandScope types
 // BotFather shows as toggles.
-var menuScopes = []string{"", "all_private_chats", "all_group_chats", "all_chat_administrators"}
+var menuScopes = []string{"", privateScope, "all_group_chats", "all_chat_administrators"}
+
+const privateScope = "all_private_chats"
 
 func scopeName(s string) string {
 	if s == "" {
@@ -73,15 +75,21 @@ func run(ctx context.Context, show bool) error {
 	if err := telegram.SetChatCommands(ctx, http.DefaultClient, token, cmds, groupID); err != nil {
 		return fmt.Errorf("group: %w", err)
 	}
-	names := make([]string, len(menuScopes))
-	for i, s := range menuScopes {
+	if err := telegram.SetCommands(ctx, http.DefaultClient, token, botcmd.PrivateMenu(), privateScope); err != nil {
+		return fmt.Errorf("scope %s: %w", privateScope, err)
+	}
+	var names []string
+	for _, s := range menuScopes {
+		if s == privateScope {
+			continue
+		}
 		if err := telegram.DeleteCommands(ctx, http.DefaultClient, token, s); err != nil {
 			return fmt.Errorf("scope %s: %w", scopeName(s), err)
 		}
-		names[i] = scopeName(s)
+		names = append(names, scopeName(s))
 	}
 	fmt.Printf("pushed %d commands to the group %d\n", len(cmds), groupID)
+	fmt.Println("private chats: /start only; group admins get the full menu there with /start")
 	fmt.Printf("removed the menu from: %s\n", strings.Join(names, ", "))
-	fmt.Println("group admins get it in private with /start")
 	return nil
 }

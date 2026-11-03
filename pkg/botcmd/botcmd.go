@@ -68,6 +68,16 @@ func Menu() []telegram.Command {
 	return append(out, telegram.Command{Command: "help", Description: "Alle Befehle anzeigen"})
 }
 
+// PrivateMenu is everyone's menu in private: Telegram's Start button shows
+// only in a fresh chat, so this keeps /start one tap away for anyone who has
+// written to the bot before. Admins' own chat menu overrides it.
+func PrivateMenu() []telegram.Command {
+	return []telegram.Command{{Command: CmdStart, Description: "Beitritt zur WG-Gruppe anfragen"}}
+}
+
+// JoinHint answers anything but /start from someone outside the group.
+const JoinHint = "Tippe auf /start, um Zugang zur WG-Gruppe anzufragen."
+
 const startMessage = "Hallo! Ich erinnere die WG daran, wer mit Putzen dran ist."
 
 // helpMessage is built from duties so it can't drift from what the bot serves.

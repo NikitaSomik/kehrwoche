@@ -45,7 +45,7 @@ task fmt               # gofmt
 task tidy              # tidy dependencies
 task migrate           # apply database migrations
 task seed -- -dry      # seed / regenerate the schedule (flags after --)
-task setcommands       # command menu for the group only, none elsewhere (manual)
+task setcommands       # command menu for the group, /start in private (manual)
 task setwebhook        # re-register the webhook with the update kinds the bot handles (manual)
 task mcp               # run the MCP server (started by an MCP client, not by hand)
 ```
@@ -68,11 +68,13 @@ nothing. In private they answer only admins of the group (`creator` /
 `administrator`, checked with `getChatMember` on every command). An admin's
 `/start` shows the command list and sets the command menu for that chat. A
 member's `/start` gets a greeting, a banned user's nothing, anybody else's
-starts the onboarding.
+starts the onboarding. Anything else such a person writes is answered with a
+pointer to `/start` while the onboarding is on.
 
-`task setcommands` sets the menu for the group and removes it from the broad
-scopes (default, private chats, groups, group admins), so strangers see none;
-`-- -show` prints the broad scopes.
+`task setcommands` sets the menu for the group, gives every private chat a
+menu with `/start` alone (Telegram's Start button only shows in a fresh chat)
+and removes the menu from the other broad scopes (default, groups, group
+admins); `-- -show` prints the broad scopes.
 
 ## Onboarding
 
@@ -93,6 +95,13 @@ A new resident opens the bot and sends `/start`:
 
 Someone already in the group who sends `/start` just gets a greeting. State
 lives in `users.status` / `users.room` / `users.invite_link` / `users.invite_expires_at`.
+
+Someone who was in the group before (`users.joined_at` is set when they join
+and never cleared) and asks again goes through the same steps, room choice
+included: the card says „War schon Mitglied der WG.“ and the group hears
+„👋 … ist wieder da!“ instead of the newcomer welcome. Leaving is not stored:
+the bot asks Telegram on every `/start`. A banned user stays silent until the
+ban is lifted in the group's removed users.
 
 ```mermaid
 flowchart TD
@@ -125,7 +134,7 @@ flowchart TD
 
     join --> check{"From this user, status approved,<br/>room set, through their exact link?"}
     check -- "no" --> manual(["Left to the group admins"])
-    check -- "yes" --> done["Approve request<br/>status cleared, link revoked<br/>member tag = room number<br/>welcome in the group"]
+    check -- "yes" --> done["Approve request<br/>status cleared, link revoked<br/>member tag = room number<br/>welcome, or „wieder da“<br/>for a former member"]
 ```
 
 One-time setup:

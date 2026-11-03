@@ -45,12 +45,12 @@ func (d *fakeDB) Exec(_ context.Context, sql string, args ...any) (pgconn.Comman
 	switch {
 	case strings.Contains(sql, "INSERT INTO users (tg_user_id, status)"):
 		if !found || u.Status == users.StatusNone {
-			u.Status = users.StatusPending
+			u.Status, u.Room = users.StatusPending, 0
 			affected = true
 		}
 	case strings.Contains(sql, "SET status = NULL") && strings.Contains(sql, "status = 'approved'"):
 		if u.Status == users.StatusApproved {
-			u.Status, u.InviteLink, u.InviteExpires = users.StatusNone, "", time.Time{}
+			u.Status, u.InviteLink, u.InviteExpires, u.JoinedAt = users.StatusNone, "", time.Time{}, time.Now()
 			affected = true
 		}
 	case strings.Contains(sql, "SET invite_link = $2"):
@@ -109,6 +109,10 @@ func (r row) Scan(dest ...any) error {
 	if !r.u.InviteExpires.IsZero() {
 		exp := r.u.InviteExpires
 		*dest[3].(**time.Time) = &exp
+	}
+	if !r.u.JoinedAt.IsZero() {
+		joined := r.u.JoinedAt
+		*dest[4].(**time.Time) = &joined
 	}
 	return nil
 }
@@ -232,7 +236,7 @@ func TestStart(t *testing.T) {
 			t.Fatalf("got %d messages, want the admin card and the user's confirmation", len(bot.sent))
 		}
 		card := bot.sent[0]
-		if card.chatID != adminID || !strings.Contains(card.text, "Anna Muster (@anna)") || len(card.rows) != 2 ||
+		if card.chatID != adminID || !strings.Contains(card.text, "Anna Muster (@anna)") || strings.Contains(card.text, "War schon") || len(card.rows) != 2 ||
 			card.rows[0][0].URL != "tg://user?id=777" {
 			t.Errorf("admin card: %+v", card)
 		}
@@ -331,6 +335,21 @@ func TestStart(t *testing.T) {
 		}
 		if len(bot.sent) != 2 || len(bot.sent[0].rows) != 1 || db.rows[userID].Status != users.StatusPending {
 			t.Errorf("sent %+v, status %q", bot.sent, db.rows[userID].Status)
+		}
+	})
+
+	t.Run("a former member picks a room again, and the card says they were here", func(t *testing.T) {
+		bot := &fakeBot{}
+		db := newDB(map[int64]users.User{userID: {Room: 3, JoinedAt: time.Now().Add(-time.Hour)}})
+
+		if err := flow(bot, db).Start(ctx, newcomer, telegram.StatusLeft); err != nil {
+			t.Fatal(err)
+		}
+		if db.rows[userID].Status != users.StatusPending || db.rows[userID].Room != 0 {
+			t.Errorf("row %+v, want pending with no room", db.rows[userID])
+		}
+		if card := bot.sent[0].text; !strings.HasSuffix(card, "War schon Mitglied der WG.") || strings.Contains(card, "Zimmer") {
+			t.Errorf("card %q", card)
 		}
 	})
 
@@ -568,11 +587,25 @@ func TestJoinRequest(t *testing.T) {
 		if got := bot.last(); got.chatID != groupID || !strings.Contains(got.text, "Anna Muster") || !strings.Contains(got.text, "Zimmer 4") {
 			t.Errorf("greeting %+v", got)
 		}
-		if got := db.rows[userID]; got != (users.User{Room: 4}) {
+		if got := db.rows[userID]; got.Status != users.StatusNone || got.InviteLink != "" || got.JoinedAt.IsZero() {
 			t.Errorf("row after joining: %+v", got)
 		}
 		if len(bot.revoked) != 1 || bot.revoked[0] != link {
 			t.Errorf("revoked %v", bot.revoked)
+		}
+	})
+
+	t.Run("a former member is welcomed back", func(t *testing.T) {
+		bot := &fakeBot{}
+		row := approvedRow
+		row.JoinedAt = time.Now().Add(-30 * 24 * time.Hour)
+		db := newDB(map[int64]users.User{userID: row})
+
+		if err := flow(bot, db).JoinRequest(ctx, request(groupID)); err != nil {
+			t.Fatal(err)
+		}
+		if got := bot.last().text; got != "👋 Anna Muster ist wieder da! Zimmer 4." {
+			t.Errorf("greeting %q", got)
 		}
 	})
 
