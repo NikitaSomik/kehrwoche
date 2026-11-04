@@ -35,6 +35,28 @@ func AllDutyTypes() []DutyType {
 	}
 }
 
+// ParseDutyType turns a duty key typed by a person (an MCP argument, a CLI
+// flag) into a DutyType, or says which keys are valid. It is the one way in
+// from text: a DutyType made by a bare conversion skips the check, and every
+// rule lookup on an unknown key comes back empty.
+func ParseDutyType(s string) (DutyType, error) {
+	d := DutyType(s)
+	if _, ok := configs[d]; !ok {
+		return "", fmt.Errorf("unknown duty %q (valid: %s)", s, dutyKeys())
+	}
+	return d, nil
+}
+
+// dutyKeys lists the valid keys for error messages, in AllDutyTypes order.
+func dutyKeys() string {
+	all := AllDutyTypes()
+	keys := make([]string, len(all))
+	for i, d := range all {
+		keys[i] = string(d)
+	}
+	return strings.Join(keys, ", ")
+}
+
 // IsBlock reports whether a duty is planned one complete block at a time
 // rather than on a rolling horizon. Treppenhaus is: the staircase rotates
 // between the floors of the house, so our weeks arrive as a block on dates the

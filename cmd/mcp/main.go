@@ -86,22 +86,13 @@ func withConn(ctx context.Context, fn func(context.Context, *pgx.Conn) error) er
 	return fn(ctx, conn)
 }
 
-func parseDuty(s string) (schedule.DutyType, error) {
-	for _, d := range schedule.AllDutyTypes() {
-		if string(d) == s {
-			return d, nil
-		}
-	}
-	return "", fmt.Errorf("unknown duty %q (valid: toilet1, toilet2, hall, floor, laundry)", s)
-}
-
 // selectDuties resolves the optional `duty` argument shared by on_duty and
 // upcoming: a specific duty, or every duty when the argument is empty.
 func selectDuties(dutyArg string) ([]schedule.DutyType, error) {
 	if dutyArg == "" {
 		return schedule.AllDutyTypes(), nil
 	}
-	d, err := parseDuty(dutyArg)
+	d, err := schedule.ParseDutyType(dutyArg)
 	if err != nil {
 		return nil, err
 	}
