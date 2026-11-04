@@ -45,6 +45,7 @@ Before committing: `task fmt && task vet && task lint && task test`. `task vuln`
 - `internal/migrate` — `Apply(ctx, conn, dir)`, the migration runner shared by `cmd/migrate` and the integration tests.
 - `internal/pgtest` — integration-test helpers (`Raw` / `Connect` / `MigrationsDir`); `t.Skip` when `TEST_DATABASE_URL` is unset. `Raw` drops every application table by name — add new ones there or the second run fails re-applying their migration.
 - `migrations/*.sql` — plain SQL, applied in order by `cmd/migrate`.
+- `docs/` — Mermaid diagrams, drawn by GitHub: `architecture.md` (who calls what), `onboarding.md` (the `/start` flow), `database.md` (the tables). Update the matching one when a change moves a call between packages, a branch of the onboarding, or a column.
 
 ## Domain
 

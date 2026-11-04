@@ -9,6 +9,8 @@ A Telegram bot that reminds a shared flat (WG) group chat who's on cleaning duty
 
 Runs as serverless Go functions on Vercel, with the rotation schedule stored in a Postgres database (Neon).
 
+Diagrams of the architecture, the onboarding flow and the database are in [docs/](docs/README.md).
+
 ## Setup
 
 ```bash
@@ -107,39 +109,8 @@ of the newcomer welcome. Whether someone is in the group right now is still
 asked of Telegram on every `/start`. A banned user stays silent until the ban
 is lifted in the group's removed users.
 
-```mermaid
-flowchart TD
-    start(["/start in private"]) --> role{"Role in the WG group<br/>(getChatMember)"}
-    role -- "creator / administrator" --> admin["Command menu + full command list"]
-    role -- "member" --> member["Greeting: already in the group"]
-    role -- "kicked" --> silent1(["Silence"])
-    role -- "left / never joined" --> row{"users.status"}
+The whole flow, branch by branch, is drawn in [docs/onboarding.md](docs/onboarding.md).
 
-    row -- "rejected" --> silent2(["Silence: block list"])
-    row -- "pending" --> waiting["Request is still waiting"]
-    row -- "approved, no room" --> rooms
-    row -- "approved, room set" --> link
-    row -- "none" --> request["status = pending"]
-
-    request --> card["Card to ADMIN_CHAT_ID:<br/>name, @username, id,<br/>👤 profile, ✅ / ❌"]
-    card --> press{"Pressed by an admin<br/>of the WG group?"}
-    press -- "no" --> refused["Das geht leider nicht."]
-    press -- "❌" --> rejected["status = rejected<br/>user is told once"]
-    press -- "✅" --> approved["status = approved"]
-    approved --> rooms["Room buttons 1–8"]
-    rooms -- "pressed in the user's own chat" --> room["users.room = n"]
-    room --> link{"Stored link valid<br/>for more than 1 h?"}
-    link -- "yes" --> resend["Send the same link"]
-    link -- "no" --> newlink["New join-request link, 24 h<br/>old link revoked"]
-    resend --> join
-    newlink --> join(["User opens the link:<br/>chat_join_request"])
-    resend -. "Zimmer ändern" .-> rooms
-    newlink -. "Zimmer ändern" .-> rooms
-
-    join --> check{"From this user, status approved,<br/>room set, through their exact link?"}
-    check -- "no" --> manual(["Left to the group admins"])
-    check -- "yes" --> done["Approve request<br/>status cleared, link revoked<br/>member tag = room number<br/>welcome, or „wieder da“<br/>for a former member"]
-```
 
 One-time setup:
 
