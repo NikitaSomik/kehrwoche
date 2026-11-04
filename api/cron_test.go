@@ -17,6 +17,7 @@ import (
 
 	"github.com/NikitaSomik/kehrwoche/pkg/config"
 	"github.com/NikitaSomik/kehrwoche/pkg/schedule"
+	"github.com/NikitaSomik/kehrwoche/pkg/telegram"
 )
 
 func TestDutiesFor(t *testing.T) {
@@ -226,7 +227,7 @@ func stubSendPlain(t *testing.T) *[]string {
 	t.Helper()
 	var sent []string
 	prev := sendPlain
-	sendPlain = func(ctx context.Context, c *http.Client, token string, chatID int64, text string) error {
+	sendPlain = func(ctx context.Context, bot *telegram.Client, chatID int64, text string) error {
 		sent = append(sent, text)
 		return nil
 	}
@@ -420,7 +421,7 @@ func TestWarnHorizon(t *testing.T) {
 	t.Run("failed send is an error", func(t *testing.T) {
 		wantErr := errors.New("telegram down")
 		prev := sendPlain
-		sendPlain = func(ctx context.Context, c *http.Client, token string, chatID int64, text string) error {
+		sendPlain = func(ctx context.Context, bot *telegram.Client, chatID int64, text string) error {
 			return wantErr
 		}
 		t.Cleanup(func() { sendPlain = prev })

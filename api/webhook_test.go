@@ -152,12 +152,12 @@ func TestRecordUser(t *testing.T) {
 type apiCall struct{ method, body string }
 
 // recordingBot is a telegram.Client whose requests are recorded, not sent.
-func recordingBot(calls *[]apiCall) telegram.Client {
-	return telegram.Client{Token: "T", HTTP: &http.Client{Transport: roundTrip(func(r *http.Request) (*http.Response, error) {
+func recordingBot(calls *[]apiCall) *telegram.Client {
+	return telegram.New("T", telegram.WithHTTPClient(&http.Client{Transport: roundTrip(func(r *http.Request) (*http.Response, error) {
 		b, _ := io.ReadAll(r.Body)
 		*calls = append(*calls, apiCall{method: r.URL.Path[strings.LastIndex(r.URL.Path, "/")+1:], body: string(b)})
 		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{"ok":true,"result":true}`))}, nil
-	})}}
+	})}))
 }
 
 type roundTrip func(*http.Request) (*http.Response, error)
@@ -207,7 +207,7 @@ func TestHandleMessageRouting(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			memberStatus = func(context.Context, telegram.Client, int64, int64) (telegram.MemberStatus, error) {
+			memberStatus = func(context.Context, *telegram.Client, int64, int64) (telegram.MemberStatus, error) {
 				return tc.status, nil
 			}
 			var calls []apiCall
@@ -227,7 +227,7 @@ func TestHandleMessageRouting(t *testing.T) {
 	}
 
 	t.Run("a failed lookup answers nothing", func(t *testing.T) {
-		memberStatus = func(context.Context, telegram.Client, int64, int64) (telegram.MemberStatus, error) {
+		memberStatus = func(context.Context, *telegram.Client, int64, int64) (telegram.MemberStatus, error) {
 			return "", errors.New("timeout")
 		}
 		var calls []apiCall
@@ -255,7 +255,7 @@ func TestHandleMessageRouting(t *testing.T) {
 			"banned":             {on, &telegram.Chat{ID: 7, Type: "private"}, telegram.StatusKicked, false},
 			"in the WG group":    {on, &telegram.Chat{ID: -100, Type: "supergroup"}, telegram.StatusLeft, false},
 		} {
-			memberStatus = func(context.Context, telegram.Client, int64, int64) (telegram.MemberStatus, error) {
+			memberStatus = func(context.Context, *telegram.Client, int64, int64) (telegram.MemberStatus, error) {
 				return c.status, nil
 			}
 			var calls []apiCall

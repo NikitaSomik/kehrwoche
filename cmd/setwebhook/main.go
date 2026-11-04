@@ -11,7 +11,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"net/http"
 	"os"
 	"strings"
 
@@ -38,8 +37,9 @@ func run(ctx context.Context, show bool, url string) error {
 	if cfg.TelegramToken == "" {
 		return fmt.Errorf("TELEGRAM_BOT_TOKEN is not set")
 	}
+	bot := telegram.New(cfg.TelegramToken)
 
-	info, err := telegram.GetWebhookInfo(ctx, http.DefaultClient, cfg.TelegramToken)
+	info, err := bot.GetWebhookInfo(ctx)
 	if err != nil {
 		return err
 	}
@@ -57,7 +57,7 @@ func run(ctx context.Context, show bool, url string) error {
 	if cfg.WebhookSecret == "" {
 		return fmt.Errorf("WEBHOOK_SECRET is not set")
 	}
-	if err := telegram.SetWebhook(ctx, http.DefaultClient, cfg.TelegramToken, url, cfg.WebhookSecret, allowedUpdates); err != nil {
+	if err := bot.SetWebhook(ctx, url, cfg.WebhookSecret, allowedUpdates); err != nil {
 		return err
 	}
 	fmt.Printf("webhook set: %s\nallowed updates: %s\n", url, strings.Join(allowedUpdates, ", "))

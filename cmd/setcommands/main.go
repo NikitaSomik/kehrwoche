@@ -11,7 +11,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"net/http"
 	"os"
 	"strings"
 
@@ -45,10 +44,10 @@ func main() {
 
 func run(ctx context.Context, show bool) error {
 	cfg := config.Load()
-	token := cfg.TelegramToken
-	if token == "" {
+	if cfg.TelegramToken == "" {
 		return fmt.Errorf("TELEGRAM_BOT_TOKEN is not set")
 	}
+	bot := telegram.New(cfg.TelegramToken)
 	groupID, ok := cfg.GroupID()
 	if !ok {
 		return fmt.Errorf("CHAT_ID is not set or invalid")
@@ -56,7 +55,7 @@ func run(ctx context.Context, show bool) error {
 
 	if show {
 		for _, s := range menuScopes {
-			cmds, err := telegram.GetCommands(ctx, http.DefaultClient, token, s)
+			cmds, err := bot.GetCommands(ctx, s)
 			if err != nil {
 				return fmt.Errorf("scope %s: %w", scopeName(s), err)
 			}
@@ -72,10 +71,10 @@ func run(ctx context.Context, show bool) error {
 	}
 
 	cmds := botcmd.Menu()
-	if err := telegram.SetChatCommands(ctx, http.DefaultClient, token, cmds, groupID); err != nil {
+	if err := bot.SetChatCommands(ctx, cmds, groupID); err != nil {
 		return fmt.Errorf("group: %w", err)
 	}
-	if err := telegram.SetCommands(ctx, http.DefaultClient, token, botcmd.PrivateMenu(), privateScope); err != nil {
+	if err := bot.SetCommands(ctx, botcmd.PrivateMenu(), privateScope); err != nil {
 		return fmt.Errorf("scope %s: %w", privateScope, err)
 	}
 	var names []string
@@ -83,7 +82,7 @@ func run(ctx context.Context, show bool) error {
 		if s == privateScope {
 			continue
 		}
-		if err := telegram.DeleteCommands(ctx, http.DefaultClient, token, s); err != nil {
+		if err := bot.DeleteCommands(ctx, s); err != nil {
 			return fmt.Errorf("scope %s: %w", scopeName(s), err)
 		}
 		names = append(names, scopeName(s))

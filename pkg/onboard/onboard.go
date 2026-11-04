@@ -14,6 +14,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"strconv"
 	"strings"
 	"time"
@@ -23,7 +24,7 @@ import (
 	"github.com/NikitaSomik/kehrwoche/pkg/users"
 )
 
-// Bot is the part of the Bot API the onboarding uses; telegram.Client
+// Bot is the part of the Bot API the onboarding uses; *telegram.Client
 // satisfies it.
 type Bot interface {
 	SendPlain(ctx context.Context, chatID int64, text string) error
@@ -111,7 +112,7 @@ func (f Flow) Start(ctx context.Context, from *telegram.User, status telegram.Me
 	}
 	card := requestCard(from, u)
 	err = f.Bot.SendKeyboard(ctx, f.AdminID, card, decisionKeyboard(uid, true))
-	if err != nil {
+	if refused(err) {
 		// Most likely the user's privacy settings refuse the profile button.
 		err = f.Bot.SendKeyboard(ctx, f.AdminID, card, decisionKeyboard(uid, false))
 	}
@@ -123,6 +124,16 @@ func (f Flow) Start(ctx context.Context, from *telegram.User, status telegram.Me
 		return f.failed(ctx, uid, fmt.Errorf("notify admin: %w", err))
 	}
 	return f.Bot.SendPlain(ctx, uid, msgRequestSent)
+}
+
+// refused reports whether Telegram turned a request down as malformed (400),
+// which a hidden profile does to the profile button. Only then is the card
+// certainly undelivered and safe to send again; after a timeout or a dropped
+// connection it may already be in the admin chat, and a second one would be a
+// duplicate.
+func refused(err error) bool {
+	var apiErr *telegram.APIError
+	return errors.As(err, &apiErr) && apiErr.Code == http.StatusBadRequest
 }
 
 // Callback handles a button press. Every press is answered, so the client's

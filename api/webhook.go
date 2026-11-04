@@ -52,7 +52,7 @@ func Webhook(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
 	defer cancel()
 
-	bot := telegram.Client{HTTP: http.DefaultClient, Token: cfg.TelegramToken}
+	bot := telegram.New(cfg.TelegramToken)
 	switch {
 	case update.CallbackQuery != nil:
 		withFlow(ctx, cfg, bot, "callback", func(f onboard.Flow) error {
@@ -76,7 +76,7 @@ func Webhook(w http.ResponseWriter, r *http.Request) {
 // admins get every command, members a greeting, banned users nothing, and
 // everybody else the onboarding, or a pointer to /start for anything else
 // they write.
-func handleMessage(ctx context.Context, cfg config.Config, bot telegram.Client, msg *telegram.Message) {
+func handleMessage(ctx context.Context, cfg config.Config, bot *telegram.Client, msg *telegram.Message) {
 	cmd := msg.Command()
 	groupID, ok := cfg.GroupID()
 	if !ok || msg.Chat == nil || msg.From == nil {
@@ -131,11 +131,11 @@ func handleMessage(ctx context.Context, cfg config.Config, bot telegram.Client, 
 }
 
 // memberStatus is the getChatMember lookup, a variable so tests need no Bot API.
-var memberStatus = func(ctx context.Context, bot telegram.Client, chatID, userID int64) (telegram.MemberStatus, error) {
+var memberStatus = func(ctx context.Context, bot *telegram.Client, chatID, userID int64) (telegram.MemberStatus, error) {
 	return bot.GetMemberStatus(ctx, chatID, userID)
 }
 
-func answerCommand(ctx context.Context, cfg config.Config, bot telegram.Client, msg *telegram.Message, cmd string) {
+func answerCommand(ctx context.Context, cfg config.Config, bot *telegram.Client, msg *telegram.Message, cmd string) {
 	if reply, ok := botcmd.StaticReply(cmd, msg.Chat.IsPrivate()); ok {
 		if err := bot.SendPlain(ctx, msg.Chat.ID, reply); err != nil {
 			log.Printf("webhook: send static: %v", err)
@@ -169,7 +169,7 @@ func answerCommand(ctx context.Context, cfg config.Config, bot telegram.Client, 
 		log.Printf("webhook: command: %v", err)
 		return
 	}
-	if err := telegram.Send(ctx, bot.HTTP, bot.Token, msg.Chat.ID, text); err != nil {
+	if err := bot.Send(ctx, msg.Chat.ID, text); err != nil {
 		log.Printf("webhook: send: %v", err)
 	}
 }
@@ -185,7 +185,7 @@ func onboardingChats(cfg config.Config) (groupID, adminID int64, ok bool) {
 	return groupID, adminID, cfg.OnboardingEnabled && okGroup && okAdmin
 }
 
-func withFlow(ctx context.Context, cfg config.Config, bot telegram.Client, what string, step func(onboard.Flow) error) {
+func withFlow(ctx context.Context, cfg config.Config, bot *telegram.Client, what string, step func(onboard.Flow) error) {
 	groupID, adminID, ok := onboardingChats(cfg)
 	if !ok {
 		return

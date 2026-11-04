@@ -13,7 +13,11 @@ type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
 
-func fakeClient(status int, body string, err error) *http.Client {
+// okBody is the Bot API's answer to a call whose result the caller ignores.
+const okBody = `{"ok":true,"result":true}`
+
+// fakeTransport answers every request with status and body, or fails with err.
+func fakeTransport(status int, body string, err error) *http.Client {
 	return &http.Client{
 		Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
 			if err != nil {
@@ -27,10 +31,14 @@ func fakeClient(status int, body string, err error) *http.Client {
 	}
 }
 
+func fakeClient(status int, body string, err error) *Client {
+	return New("T", WithHTTPClient(fakeTransport(status, body, err)))
+}
+
 // capturingClient records the request body and path of the last request.
-func capturingClient(status int, respBody string) (*http.Client, *string, *string) {
+func capturingClient(status int, respBody string) (*Client, *string, *string) {
 	var gotBody, gotPath string
-	c := &http.Client{
+	hc := &http.Client{
 		Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
 			b, _ := io.ReadAll(r.Body)
 			gotBody = string(b)
@@ -38,27 +46,27 @@ func capturingClient(status int, respBody string) (*http.Client, *string, *strin
 			return &http.Response{StatusCode: status, Body: io.NopCloser(strings.NewReader(respBody))}, nil
 		}),
 	}
-	return c, &gotBody, &gotPath
+	return New("T", WithHTTPClient(hc)), &gotBody, &gotPath
 }
 
 func TestSendSuccess(t *testing.T) {
-	client := fakeClient(http.StatusOK, "", nil)
-	if err := Send(context.Background(), client, "TOKEN", 1, "hi"); err != nil {
+	client := fakeClient(http.StatusOK, `{"ok":true,"result":{"message_id":1}}`, nil)
+	if err := client.Send(context.Background(), 1, "hi"); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
 func TestSendNonOKIncludesBody(t *testing.T) {
-	client := fakeClient(http.StatusBadRequest, `{"description":"chat not found"}`, nil)
-	err := Send(context.Background(), client, "TOKEN", 1, "hi")
+	client := fakeClient(http.StatusBadRequest, `{"ok":false,"error_code":400,"description":"Bad Request: chat not found"}`, nil)
+	err := client.Send(context.Background(), 1, "hi")
 	if err == nil || !strings.Contains(err.Error(), "chat not found") {
 		t.Errorf("got %v, want error containing the response body", err)
 	}
 }
 
 func TestSendTransportErrorDoesNotLeakToken(t *testing.T) {
-	client := fakeClient(0, "", errors.New("connection refused"))
-	err := Send(context.Background(), client, "super-secret-token", 1, "hi")
+	client := New("super-secret-token", WithHTTPClient(fakeTransport(0, "", errors.New("connection refused"))))
+	err := client.Send(context.Background(), 1, "hi")
 	if err == nil {
 		t.Fatal("expected an error")
 	}
@@ -71,8 +79,8 @@ func TestSendTransportErrorDoesNotLeakToken(t *testing.T) {
 }
 
 func TestSendUsesMarkdown(t *testing.T) {
-	client, body, path := capturingClient(http.StatusOK, "")
-	if err := Send(context.Background(), client, "T", 1, "hi"); err != nil {
+	client, body, path := capturingClient(http.StatusOK, okBody)
+	if err := client.Send(context.Background(), 1, "hi"); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.HasSuffix(*path, "/sendMessage") {
@@ -84,8 +92,8 @@ func TestSendUsesMarkdown(t *testing.T) {
 }
 
 func TestSendPlainOmitsParseMode(t *testing.T) {
-	client, body, _ := capturingClient(http.StatusOK, "")
-	if err := SendPlain(context.Background(), client, "T", 1, "/etage_plan"); err != nil {
+	client, body, _ := capturingClient(http.StatusOK, okBody)
+	if err := client.SendPlain(context.Background(), 1, "/etage_plan"); err != nil {
 		t.Fatal(err)
 	}
 	if strings.Contains(*body, "parse_mode") {
@@ -97,8 +105,8 @@ func TestSendPlainOmitsParseMode(t *testing.T) {
 }
 
 func TestSetCommandsDefaultScope(t *testing.T) {
-	client, body, path := capturingClient(http.StatusOK, `{"ok":true,"result":true}`)
-	err := SetCommands(context.Background(), client, "T", []Command{
+	client, body, path := capturingClient(http.StatusOK, okBody)
+	err := client.SetCommands(context.Background(), []Command{
 		{Command: "help", Description: "Alle Befehle"},
 	}, "")
 	if err != nil {
@@ -116,8 +124,8 @@ func TestSetCommandsDefaultScope(t *testing.T) {
 }
 
 func TestSetCommandsWithScope(t *testing.T) {
-	client, body, _ := capturingClient(http.StatusOK, `{"ok":true,"result":true}`)
-	err := SetCommands(context.Background(), client, "T", nil, "all_group_chats")
+	client, body, _ := capturingClient(http.StatusOK, okBody)
+	err := client.SetCommands(context.Background(), nil, "all_group_chats")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -129,7 +137,7 @@ func TestSetCommandsWithScope(t *testing.T) {
 func TestGetCommandsParsesResult(t *testing.T) {
 	resp := `{"ok":true,"result":[{"command":"help","description":"Alle Befehle"},{"command":"etage","description":"Etage"}]}`
 	client, body, _ := capturingClient(http.StatusOK, resp)
-	cmds, err := GetCommands(context.Background(), client, "T", "all_private_chats")
+	cmds, err := client.GetCommands(context.Background(), "all_private_chats")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -133,6 +133,8 @@ type sent struct {
 type fakeBot struct {
 	sendErr        error
 	privateProfile bool // refuse URL buttons, as Telegram does for a hidden profile
+	keyboardErr    error
+	keyboards      int // SendKeyboard calls, delivered or not
 
 	sent     []sent
 	edits    []string
@@ -165,14 +167,18 @@ func (b *fakeBot) SendPlain(_ context.Context, chatID int64, text string) error 
 }
 
 func (b *fakeBot) SendKeyboard(_ context.Context, chatID int64, text string, rows [][]telegram.Button) error {
+	b.keyboards++
 	if b.sendErr != nil {
 		return b.sendErr
+	}
+	if b.keyboardErr != nil {
+		return b.keyboardErr
 	}
 	if b.privateProfile {
 		for _, row := range rows {
 			for _, btn := range row {
 				if btn.URL != "" {
-					return errors.New("BUTTON_USER_PRIVACY_RESTRICTED")
+					return &telegram.APIError{Method: "sendMessage", Code: 400, Description: "Bad Request: BUTTON_USER_PRIVACY_RESTRICTED"}
 				}
 			}
 		}
@@ -342,6 +348,35 @@ func TestStart(t *testing.T) {
 		}
 		if len(bot.sent) != 2 || len(bot.sent[0].rows) != 1 || db.rows[userID].Status != users.StatusPending {
 			t.Errorf("sent %+v, status %q", bot.sent, db.rows[userID].Status)
+		}
+	})
+
+	// A timeout says nothing about delivery: the card may already be in the
+	// admin chat, so a second one would be a duplicate.
+	t.Run("a card that may have arrived is not sent again", func(t *testing.T) {
+		bot := &fakeBot{keyboardErr: fmt.Errorf("telegram: sendMessage failed: %w", context.DeadlineExceeded)}
+		db := newDB(nil)
+
+		if err := flow(bot, db).Start(ctx, newcomer, telegram.StatusLeft); err == nil {
+			t.Error("want the error for the log")
+		}
+		if bot.keyboards != 1 {
+			t.Errorf("%d attempts, want 1", bot.keyboards)
+		}
+		if db.rows[userID].Status != users.StatusNone {
+			t.Errorf("status %q, want none so /start can be tried again", db.rows[userID].Status)
+		}
+	})
+
+	t.Run("any other refusal is tried once without the button", func(t *testing.T) {
+		bot := &fakeBot{keyboardErr: &telegram.APIError{Method: "sendMessage", Code: 400, Description: "Bad Request: chat not found"}}
+		db := newDB(nil)
+
+		if err := flow(bot, db).Start(ctx, newcomer, telegram.StatusLeft); err == nil {
+			t.Error("want the error for the log")
+		}
+		if bot.keyboards != 2 {
+			t.Errorf("%d attempts, want 2", bot.keyboards)
 		}
 	})
 
