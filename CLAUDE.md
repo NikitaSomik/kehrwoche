@@ -45,7 +45,7 @@ Before committing: `task fmt && task vet && task lint && task test`. `task vuln`
 - `internal/migrate` — `Apply(ctx, conn, dir)`, the migration runner shared by `cmd/migrate` and the integration tests.
 - `internal/pgtest` — integration-test helpers (`Raw` / `Connect` / `MigrationsDir`); `t.Skip` when `TEST_DATABASE_URL` is unset. `Raw` drops every application table by name — add new ones there or the second run fails re-applying their migration.
 - `migrations/*.sql` — plain SQL, applied in order by `cmd/migrate`.
-- `docs/` — Mermaid diagrams, drawn by GitHub: `architecture.md` (who calls what), `onboarding.md` (the `/start` flow), `database.md` (the tables). Update the matching one when a change moves a call between packages, a branch of the onboarding, or a column.
+- `docs/` — Mermaid diagrams, drawn by GitHub: `architecture.md` (who calls what), `onboarding.md` (the `/start` flow), `database.md` (the tables). Update the matching one when a change moves a call between packages, a branch of the onboarding, or a column. Also the runbooks the README links to: `schedule.md` (`cmd/seed`) and `secrets.md` (gitleaks, rotation); a change to `cmd/seed`'s flags or prompts updates `schedule.md`.
 
 ## Domain
 
@@ -72,7 +72,7 @@ Bot commands: `/toilette1`, `/toilette2`, `/treppenhaus` (hall), `/etage` (floor
 
 - `main` → production (Vercel `--prod`), `dev` → preview. Deploy is automatic from CI on push — never run `vercel` locally.
 - On push to `main`, CI also runs `task migrate` against the production DB.
-- CI scans the git history with gitleaks (`.gitleaks.toml`, own job, doesn't gate deploy — a committed secret has to be rotated, not un-deployed). README has the rotation runbook.
+- CI scans the git history with gitleaks (`.gitleaks.toml`, own job, doesn't gate deploy — a committed secret has to be rotated, not un-deployed). `docs/secrets.md` has the rotation runbook.
 - Secrets live in `.env` locally and the Vercel dashboard: `TELEGRAM_BOT_TOKEN`, `CHAT_ID`, `DATABASE_URL`, `WEBHOOK_SECRET`, `CRON_SECRET`, `ADMIN_CHAT_ID` (optional), `ONBOARDING_ENABLED` (`true` to turn the onboarding on; a flag, not a secret). Never read, print, or commit `.env`.
 
 ## Conventions
