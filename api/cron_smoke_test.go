@@ -9,7 +9,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/NikitaSomik/kehrwoche/pkg/config"
 	"github.com/NikitaSomik/kehrwoche/pkg/schedule"
+	"github.com/NikitaSomik/kehrwoche/pkg/telegram"
 )
 
 // This one really talks to Telegram, which is why it sits behind a build tag
@@ -25,21 +27,19 @@ func TestCronNotifiesAdminOnFailure(t *testing.T) {
 			t.Skipf("%s is not set; run through `task smoke:cron` so .env is loaded", key)
 		}
 	}
-	// Outside ReminderHour the run would skip itself before the failure.
-	now := time.Now()
-	clock = func() time.Time {
-		return time.Date(now.Year(), now.Month(), now.Day(), schedule.ReminderHour, 0, 0, 0, berlin(t))
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatal(err)
 	}
-	t.Cleanup(func() { clock = time.Now })
-
 	// Unroutable rather than merely wrong, so the failure is a connection one.
-	t.Setenv("DATABASE_URL", "postgres://user:pass@127.0.0.1:1/nope")
+	cfg.DatabaseURL = "postgres://user:pass@127.0.0.1:1/nope"
+	run := cronRun{cfg: cfg, bot: telegram.New(cfg.TelegramToken), now: nextReminder(t)}
 
 	req := httptest.NewRequest(http.MethodPost, "/api/cron", nil)
-	req.Header.Set("Authorization", "Bearer "+os.Getenv("CRON_SECRET"))
+	req.Header.Set("Authorization", "Bearer "+cfg.CronSecret)
 	rec := httptest.NewRecorder()
 
-	Cron(rec, req)
+	run.serve(rec, req)
 
 	if rec.Code != http.StatusInternalServerError {
 		t.Fatalf("got status %d, want %d — the run should have failed", rec.Code, http.StatusInternalServerError)
@@ -47,11 +47,15 @@ func TestCronNotifiesAdminOnFailure(t *testing.T) {
 	t.Log("cron failed as intended; check your private chat for the notice")
 }
 
-func berlin(t *testing.T) *time.Location {
+// nextReminder is ReminderHour on the next weekly reminder day: a run that
+// gets as far as the database. Outside ReminderHour the run would skip itself,
+// and on a day without duties it would have nothing to connect for.
+func nextReminder(t *testing.T) time.Time {
 	t.Helper()
-	loc, err := time.LoadLocation("Europe/Berlin")
-	if err != nil {
-		t.Fatal(err)
+	now := time.Now()
+	day := berlinTime(t, now.Year(), now.Month(), now.Day(), schedule.ReminderHour, 0)
+	for day.Weekday() != weeklyReminderDay {
+		day = day.AddDate(0, 0, 1)
 	}
-	return loc
+	return day
 }

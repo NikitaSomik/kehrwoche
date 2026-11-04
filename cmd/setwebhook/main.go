@@ -33,7 +33,10 @@ func main() {
 }
 
 func run(ctx context.Context, show bool, url string) error {
-	cfg := config.Load()
+	cfg, err := config.Load()
+	if err != nil {
+		return err
+	}
 	if cfg.TelegramToken == "" {
 		return fmt.Errorf("TELEGRAM_BOT_TOKEN is not set")
 	}

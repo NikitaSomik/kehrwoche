@@ -21,7 +21,11 @@ func main() {
 }
 
 func run(ctx context.Context) error {
-	conn, err := db.Connect(ctx, config.Load().DatabaseURL)
+	cfg, err := config.Load()
+	if err != nil {
+		return err
+	}
+	conn, err := db.Connect(ctx, cfg.DatabaseURL)
 	if err != nil {
 		return err
 	}

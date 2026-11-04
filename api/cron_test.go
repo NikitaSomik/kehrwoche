@@ -85,19 +85,24 @@ func TestCron_Unauthorized(t *testing.T) {
 }
 
 func TestCron_ValidSecret_DBError(t *testing.T) {
+	t.Parallel()
 	// No live DB in this test — db.Connect fails fast on an empty
 	// DATABASE_URL, exercising the post-auth error path without a network call.
-	setClock(t, berlinTime(t, 2026, time.November, 5, schedule.ReminderHour, 7))
-	t.Setenv("CRON_SECRET", "abc")
-	t.Setenv("DATABASE_URL", "")
-	req := httptest.NewRequest(http.MethodPost, "/api/cron", nil)
-	req.Header.Set("Authorization", "Bearer abc")
+	bot := &fakeNotifier{}
+	run := cronRun{
+		cfg: config.Config{CronSecret: "abc", ChatID: -100, AdminChatID: 456},
+		bot: bot,
+		now: berlinTime(t, 2026, time.November, 5, schedule.ReminderHour, 7),
+	}
 	rec := httptest.NewRecorder()
 
-	Cron(rec, req)
+	run.serve(rec, authorized(http.MethodPost))
 
 	if rec.Code != http.StatusInternalServerError {
 		t.Errorf("got status %d, want %d", rec.Code, http.StatusInternalServerError)
+	}
+	if len(bot.sent) != 1 || bot.sent[0].chatID != 456 || !strings.Contains(bot.sent[0].text, "Datenbank") {
+		t.Errorf("sent %+v, want one notice to the admin naming the database", bot.sent)
 	}
 }
 
@@ -105,20 +110,75 @@ func TestCron_ValidSecret_DBError(t *testing.T) {
 // touches the database. DATABASE_URL is empty, so a run that got as far as
 // connecting would answer 500 instead.
 func TestCron_OffHourRunDoesNothing(t *testing.T) {
-	t.Setenv("CRON_SECRET", "abc")
-	t.Setenv("DATABASE_URL", "")
+	t.Parallel()
 	for _, hour := range []int{schedule.ReminderHour - 1, schedule.ReminderHour + 1} {
-		setClock(t, berlinTime(t, 2026, time.November, 5, hour, 30))
-		req := httptest.NewRequest(http.MethodGet, "/api/cron", nil)
-		req.Header.Set("Authorization", "Bearer abc")
+		bot := &fakeNotifier{}
+		run := cronRun{
+			cfg: config.Config{CronSecret: "abc", ChatID: -100, AdminChatID: 456},
+			bot: bot,
+			now: berlinTime(t, 2026, time.November, 5, hour, 30),
+		}
 		rec := httptest.NewRecorder()
 
-		Cron(rec, req)
+		run.serve(rec, authorized(http.MethodGet))
 
-		if rec.Code != http.StatusOK {
-			t.Errorf("%02d:30 Berlin: got status %d, want %d", hour, rec.Code, http.StatusOK)
+		if rec.Code != http.StatusOK || len(bot.sent) != 0 {
+			t.Errorf("%02d:30 Berlin: got status %d and %d messages, want %d and none", hour, rec.Code, len(bot.sent), http.StatusOK)
 		}
 	}
+}
+
+// A variable that doesn't parse is reported along with whatever else went
+// wrong, in the run's one notice.
+func TestCron_ConfigErrorIsReported(t *testing.T) {
+	t.Parallel()
+	bot := &fakeNotifier{}
+	run := cronRun{
+		cfg:    config.Config{CronSecret: "abc", AdminChatID: 456},
+		cfgErr: errors.New(`CHAT_ID="wg" is not a chat id`),
+		bot:    bot,
+		now:    berlinTime(t, 2026, time.November, 5, schedule.ReminderHour, 7),
+	}
+	rec := httptest.NewRecorder()
+
+	run.serve(rec, authorized(http.MethodGet))
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Errorf("got status %d, want %d", rec.Code, http.StatusInternalServerError)
+	}
+	if len(bot.sent) != 1 {
+		t.Fatalf("sent %+v, want one notice", bot.sent)
+	}
+	for _, want := range []string{`CHAT_ID="wg"`, "CHAT_ID fehlt"} {
+		if !strings.Contains(bot.sent[0].text, want) {
+			t.Errorf("notice lacks %q:\n%s", want, bot.sent[0].text)
+		}
+	}
+}
+
+// A day without duties has nothing to remind of, so it needs neither the
+// group nor the database.
+func TestCron_NoDutiesToday(t *testing.T) {
+	t.Parallel()
+	bot := &fakeNotifier{}
+	run := cronRun{
+		cfg: config.Config{CronSecret: "abc", AdminChatID: 456},
+		bot: bot,
+		now: berlinTime(t, 2026, time.November, 2, schedule.ReminderHour, 7), // a Monday
+	}
+	rec := httptest.NewRecorder()
+
+	run.serve(rec, authorized(http.MethodGet))
+
+	if rec.Code != http.StatusOK || len(bot.sent) != 0 {
+		t.Errorf("got status %d and %+v, want 200 and nothing sent", rec.Code, bot.sent)
+	}
+}
+
+func authorized(method string) *http.Request {
+	req := httptest.NewRequest(method, "/api/cron", nil)
+	req.Header.Set("Authorization", "Bearer abc")
+	return req
 }
 
 // weeklyDuties sets the order the reminder lists the weekly duties in, so it
@@ -204,14 +264,6 @@ func TestVercelCronMatchesReminderHour(t *testing.T) {
 	}
 }
 
-// setClock makes Cron see now as the current time for the rest of the test.
-func setClock(t *testing.T, now time.Time) {
-	t.Helper()
-	prev := clock
-	clock = func() time.Time { return now }
-	t.Cleanup(func() { clock = prev })
-}
-
 func berlinTime(t *testing.T, year int, month time.Month, day, hour, minute int) time.Time {
 	t.Helper()
 	loc, err := time.LoadLocation("Europe/Berlin")
@@ -221,33 +273,56 @@ func berlinTime(t *testing.T, year int, month time.Month, day, hour, minute int)
 	return time.Date(year, month, day, hour, minute, 0, 0, loc)
 }
 
-// stubSendPlain replaces the Bot API call for the duration of a test and
-// records what would have been sent.
-func stubSendPlain(t *testing.T) *[]string {
-	t.Helper()
-	var sent []string
-	prev := sendPlain
-	sendPlain = func(ctx context.Context, bot *telegram.Client, chatID int64, text string) error {
-		sent = append(sent, text)
-		return nil
-	}
-	t.Cleanup(func() { sendPlain = prev })
-	return &sent
+type sentMsg struct {
+	chatID   int64
+	text     string
+	markdown bool
 }
 
+// fakeNotifier records what a run would have sent, and fails every send with
+// err when set.
+type fakeNotifier struct {
+	sent []sentMsg
+	err  error
+}
+
+func (n *fakeNotifier) Send(_ context.Context, chatID int64, text string) error {
+	return n.record(sentMsg{chatID: chatID, text: text, markdown: true})
+}
+
+func (n *fakeNotifier) SendPlain(_ context.Context, chatID int64, text string) error {
+	return n.record(sentMsg{chatID: chatID, text: text})
+}
+
+func (n *fakeNotifier) record(m sentMsg) error {
+	if n.err != nil {
+		return n.err
+	}
+	n.sent = append(n.sent, m)
+	return nil
+}
+
+var _ notifier = (*telegram.Client)(nil)
+
 func TestReportProblems(t *testing.T) {
+	t.Parallel()
+	admin := config.Config{AdminChatID: 456}
+
 	t.Run("reaches the admin as one message", func(t *testing.T) {
-		sent := stubSendPlain(t)
-		cfg := config.Config{AdminChatID: "456"}
+		t.Parallel()
+		bot := &fakeNotifier{}
 
-		reportProblems(context.Background(), cfg, "Etage: Plan nicht lesbar", "Erinnerung nicht zustellbar")
+		cronRun{cfg: admin, bot: bot}.reportProblems(context.Background(), "Etage: Plan nicht lesbar", "Erinnerung nicht zustellbar")
 
-		if len(*sent) != 1 {
-			t.Fatalf("got %d messages, want 1 covering both problems", len(*sent))
+		if len(bot.sent) != 1 {
+			t.Fatalf("got %d messages, want 1 covering both problems", len(bot.sent))
+		}
+		if m := bot.sent[0]; m.chatID != 456 || m.markdown {
+			t.Errorf("got %+v, want plain text to the admin chat", m)
 		}
 		for _, want := range []string{"Etage: Plan nicht lesbar", "Erinnerung nicht zustellbar"} {
-			if !strings.Contains((*sent)[0], want) {
-				t.Errorf("message is missing %q:\n%s", want, (*sent)[0])
+			if !strings.Contains(bot.sent[0].text, want) {
+				t.Errorf("message is missing %q:\n%s", want, bot.sent[0].text)
 			}
 		}
 	})
@@ -255,33 +330,24 @@ func TestReportProblems(t *testing.T) {
 	// The notice is opt-in; without a chat to send it to there is nothing to
 	// do, and it must never fall back to the group.
 	t.Run("no admin chat, nothing sent", func(t *testing.T) {
-		sent := stubSendPlain(t)
+		t.Parallel()
+		bot := &fakeNotifier{}
 
-		reportProblems(context.Background(), config.Config{}, "something broke")
+		cronRun{cfg: config.Config{ChatID: -100}, bot: bot}.reportProblems(context.Background(), "something broke")
 
-		if len(*sent) != 0 {
-			t.Errorf("sent %v, want nothing", *sent)
+		if len(bot.sent) != 0 {
+			t.Errorf("sent %+v, want nothing", bot.sent)
 		}
 	})
 
 	t.Run("nothing wrong, nothing sent", func(t *testing.T) {
-		sent := stubSendPlain(t)
+		t.Parallel()
+		bot := &fakeNotifier{}
 
-		reportProblems(context.Background(), config.Config{AdminChatID: "456"})
+		cronRun{cfg: admin, bot: bot}.reportProblems(context.Background())
 
-		if len(*sent) != 0 {
-			t.Errorf("sent %v, want nothing", *sent)
-		}
-	})
-
-	t.Run("unparseable admin chat sends nothing", func(t *testing.T) {
-		sent := stubSendPlain(t)
-		cfg := config.Config{AdminChatID: "not-a-number"}
-
-		reportProblems(context.Background(), cfg, "something broke")
-
-		if len(*sent) != 0 {
-			t.Errorf("sent %v, want nothing", *sent)
+		if len(bot.sent) != 0 {
+			t.Errorf("sent %+v, want nothing", bot.sent)
 		}
 	})
 }
@@ -321,41 +387,45 @@ func (r horizonRow) Scan(dest ...any) error {
 }
 
 func TestHorizonProblems(t *testing.T) {
+	t.Parallel()
 	thursday := time.Date(2026, 9, 10, 12, 0, 0, 0, time.UTC)
 	friday := thursday.AddDate(0, 0, 1)
 	near := thursday.AddDate(0, 0, 7)
-	cfg := config.Config{AdminChatID: "123"}
+	cfg := config.Config{AdminChatID: 123}
 
 	t.Run("reminder day checks and warns", func(t *testing.T) {
-		sent := stubSendPlain(t)
+		t.Parallel()
+		bot := &fakeNotifier{}
 		q := &horizonQuerier{t: t, last: &near}
 
-		if got := horizonProblems(context.Background(), q, cfg, thursday); got != nil {
+		if got := (cronRun{cfg: cfg, bot: bot}).horizonProblems(context.Background(), q, thursday); got != nil {
 			t.Errorf("got problems %v, want none", got)
 		}
-		if len(*sent) != 1 {
-			t.Errorf("got %d messages, want 1", len(*sent))
+		if len(bot.sent) != 1 {
+			t.Errorf("got %d messages, want 1", len(bot.sent))
 		}
 	})
 
 	t.Run("any other day leaves the DB alone", func(t *testing.T) {
-		sent := stubSendPlain(t)
+		t.Parallel()
+		bot := &fakeNotifier{}
 		q := &horizonQuerier{t: t, last: &near}
 
-		if got := horizonProblems(context.Background(), q, cfg, friday); got != nil {
+		if got := (cronRun{cfg: cfg, bot: bot}).horizonProblems(context.Background(), q, friday); got != nil {
 			t.Errorf("got problems %v, want none", got)
 		}
-		if q.calls != 0 || len(*sent) != 0 {
-			t.Errorf("got %d queries and %d messages, want neither", q.calls, len(*sent))
+		if q.calls != 0 || len(bot.sent) != 0 {
+			t.Errorf("got %d queries and %d messages, want neither", q.calls, len(bot.sent))
 		}
 	})
 
 	// A failed check must surface: staying quiet here looks exactly like a
 	// schedule with plenty of weeks left.
 	t.Run("failed check is reported", func(t *testing.T) {
+		t.Parallel()
 		q := &horizonQuerier{t: t, err: errors.New("connection reset")}
 
-		got := horizonProblems(context.Background(), q, cfg, thursday)
+		got := (cronRun{cfg: cfg, bot: &fakeNotifier{}}).horizonProblems(context.Background(), q, thursday)
 		if len(got) != 1 || !strings.Contains(got[0], "connection reset") {
 			t.Errorf("got %v, want one problem naming the cause", got)
 		}
@@ -363,15 +433,18 @@ func TestHorizonProblems(t *testing.T) {
 }
 
 func TestWarnHorizon(t *testing.T) {
+	t.Parallel()
 	now := time.Date(2026, 9, 6, 12, 0, 0, 0, time.UTC)
 	far := now.AddDate(0, 0, 100)
 	near := now.AddDate(0, 0, 7)
+	cfg := config.Config{AdminChatID: 123}
 
 	t.Run("no admin chat, no query", func(t *testing.T) {
+		t.Parallel()
 		// The notice is off, so it must not cost a round-trip either.
 		q := &horizonQuerier{t: t, last: &near}
 
-		if err := warnHorizon(context.Background(), q, config.Config{}, now); err != nil {
+		if err := (cronRun{bot: &fakeNotifier{}}).warnHorizon(context.Background(), q, now); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 		if q.calls != 0 {
@@ -380,78 +453,64 @@ func TestWarnHorizon(t *testing.T) {
 	})
 
 	t.Run("nothing running out, nothing sent", func(t *testing.T) {
+		t.Parallel()
+		bot := &fakeNotifier{}
 		q := &horizonQuerier{t: t, last: &far}
-		cfg := config.Config{AdminChatID: "123"}
 
-		if err := warnHorizon(context.Background(), q, cfg, now); err != nil {
+		if err := (cronRun{cfg: cfg, bot: bot}).warnHorizon(context.Background(), q, now); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 		if q.calls != len(schedule.HorizonDuties()) {
 			t.Errorf("got %d queries, want one per horizon duty (%d)", q.calls, len(schedule.HorizonDuties()))
 		}
+		if len(bot.sent) != 0 {
+			t.Errorf("sent %+v, want nothing", bot.sent)
+		}
 	})
 
 	t.Run("running out reaches the admin", func(t *testing.T) {
-		sent := stubSendPlain(t)
+		t.Parallel()
+		bot := &fakeNotifier{}
 		q := &horizonQuerier{t: t, last: &near}
-		cfg := config.Config{AdminChatID: "123"}
 
-		if err := warnHorizon(context.Background(), q, cfg, now); err != nil {
+		if err := (cronRun{cfg: cfg, bot: bot}).warnHorizon(context.Background(), q, now); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if len(*sent) != 1 {
-			t.Fatalf("got %d messages, want 1 covering every duty", len(*sent))
+		if len(bot.sent) != 1 || bot.sent[0].chatID != 123 {
+			t.Fatalf("sent %+v, want 1 message to the admin covering every duty", bot.sent)
 		}
 	})
 
 	t.Run("schedule already over still warns", func(t *testing.T) {
-		sent := stubSendPlain(t)
+		t.Parallel()
+		bot := &fakeNotifier{}
 		past := now.AddDate(0, 0, -3)
 		q := &horizonQuerier{t: t, last: &past}
-		cfg := config.Config{AdminChatID: "123"}
 
-		if err := warnHorizon(context.Background(), q, cfg, now); err != nil {
+		if err := (cronRun{cfg: cfg, bot: bot}).warnHorizon(context.Background(), q, now); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if len(*sent) != 1 {
-			t.Fatalf("got %d messages, want 1", len(*sent))
+		if len(bot.sent) != 1 {
+			t.Fatalf("got %d messages, want 1", len(bot.sent))
 		}
 	})
 
 	t.Run("failed send is an error", func(t *testing.T) {
+		t.Parallel()
 		wantErr := errors.New("telegram down")
-		prev := sendPlain
-		sendPlain = func(ctx context.Context, bot *telegram.Client, chatID int64, text string) error {
-			return wantErr
-		}
-		t.Cleanup(func() { sendPlain = prev })
 		q := &horizonQuerier{t: t, last: &near}
-		cfg := config.Config{AdminChatID: "123"}
 
-		if err := warnHorizon(context.Background(), q, cfg, now); !errors.Is(err, wantErr) {
+		if err := (cronRun{cfg: cfg, bot: &fakeNotifier{err: wantErr}}).warnHorizon(context.Background(), q, now); !errors.Is(err, wantErr) {
 			t.Errorf("got %v, want %v", err, wantErr)
 		}
 	})
 
-	t.Run("unparseable admin chat is an error", func(t *testing.T) {
-		q := &horizonQuerier{t: t, last: &near}
-		cfg := config.Config{AdminChatID: "not-a-number"}
-
-		err := warnHorizon(context.Background(), q, cfg, now)
-		if err == nil {
-			t.Fatal("got nil, want an error naming ADMIN_CHAT_ID")
-		}
-		if !strings.Contains(err.Error(), "ADMIN_CHAT_ID") {
-			t.Errorf("got %v, want it to name ADMIN_CHAT_ID", err)
-		}
-	})
-
 	t.Run("query error is propagated", func(t *testing.T) {
+		t.Parallel()
 		wantErr := errors.New("connection reset")
 		q := &horizonQuerier{t: t, err: wantErr}
-		cfg := config.Config{AdminChatID: "123"}
 
-		if err := warnHorizon(context.Background(), q, cfg, now); !errors.Is(err, wantErr) {
+		if err := (cronRun{cfg: cfg, bot: &fakeNotifier{}}).warnHorizon(context.Background(), q, now); !errors.Is(err, wantErr) {
 			t.Errorf("got %v, want %v", err, wantErr)
 		}
 	})
