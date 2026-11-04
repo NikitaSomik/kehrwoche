@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
@@ -40,17 +39,36 @@ func dutiesFor(weekday time.Weekday) []schedule.DutyType {
 	}
 }
 
-// clock is time.Now, a variable so tests can pick the hour a run happens at.
-var clock = time.Now
+// notifier is the part of the Bot API a cron run uses; *telegram.Client
+// satisfies it.
+type notifier interface {
+	Send(ctx context.Context, chatID int64, text string) error
+	SendPlain(ctx context.Context, chatID int64, text string) error
+}
+
+// cronRun is what one run depends on: the config, the bot and the moment it
+// runs at. Cron builds the real ones; tests build their own, so nothing is
+// swapped in package state and the tests can run in parallel.
+type cronRun struct {
+	cfg config.Config
+	// cfgErr is what config.Load could not parse. It doesn't stop the run —
+	// whatever did parse still works — but the run reports it.
+	cfgErr error
+	bot    notifier
+	now    time.Time
+}
 
 func Cron(w http.ResponseWriter, r *http.Request) {
-	cfg := config.Load()
+	cfg, err := config.Load()
+	cronRun{cfg: cfg, cfgErr: err, bot: telegram.New(cfg.TelegramToken), now: time.Now()}.serve(w, r)
+}
 
+func (c cronRun) serve(w http.ResponseWriter, r *http.Request) {
 	// Fail-closed: if the secret is not configured, deny all requests.
 	// Constant-time comparison to avoid a timing side-channel on the secret.
 	got := r.Header.Get("Authorization")
-	want := "Bearer " + cfg.CronSecret
-	if cfg.CronSecret == "" || subtle.ConstantTimeCompare([]byte(got), []byte(want)) != 1 {
+	want := "Bearer " + c.cfg.CronSecret
+	if c.cfg.CronSecret == "" || subtle.ConstantTimeCompare([]byte(got), []byte(want)) != 1 {
 		w.WriteHeader(http.StatusUnauthorized)
 		return
 	}
@@ -58,14 +76,19 @@ func Cron(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
 	defer cancel()
 
+	var problems []string
+	if c.cfgErr != nil {
+		problems = append(problems, fmt.Sprintf("Konfiguration fehlerhaft: %v", c.cfgErr))
+	}
+
 	loc, err := time.LoadLocation("Europe/Berlin")
 	if err != nil {
 		log.Printf("cron: load location: %v", err)
-		reportProblems(ctx, cfg, fmt.Sprintf("Zeitzone nicht ladbar: %v", err))
-		http.Error(w, "config error", http.StatusInternalServerError)
+		problems = append(problems, fmt.Sprintf("Zeitzone nicht ladbar: %v", err))
+		c.fail(ctx, w, problems)
 		return
 	}
-	now := clock().In(loc)
+	now := c.now.In(loc)
 
 	// vercel.json fires at two UTC hours because Vercel Cron knows no time
 	// zones; exactly one of them is ReminderHour in Berlin on any given day,
@@ -75,14 +98,43 @@ func Cron(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	conn, err := db.Connect(ctx, cfg.DatabaseURL)
+	if c.cfgErr != nil {
+		log.Printf("cron: config: %v", c.cfgErr)
+	}
+	problems = append(problems, c.remind(ctx, now)...)
+	if len(problems) > 0 {
+		c.fail(ctx, w, problems)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+}
+
+// fail reports the run's problems and answers 500, so the failure also shows
+// in Vercel's cron log.
+func (c cronRun) fail(ctx context.Context, w http.ResponseWriter, problems []string) {
+	c.reportProblems(ctx, problems...)
+	http.Error(w, "cron run failed", http.StatusInternalServerError)
+}
+
+// remind sends the day's reminder to the group, then the weekly horizon check,
+// and returns what went wrong. One duty type's query failure doesn't drop the
+// others from the reminder.
+func (c cronRun) remind(ctx context.Context, now time.Time) []string {
+	duties := dutiesFor(now.Weekday())
+	if len(duties) == 0 {
+		return nil
+	}
+	if c.cfg.ChatID == 0 {
+		log.Printf("cron: CHAT_ID is not set")
+		return []string{"CHAT_ID fehlt — die Erinnerung hat kein Ziel"}
+	}
+
+	conn, err := db.Connect(ctx, c.cfg.DatabaseURL)
 	if err != nil {
 		log.Printf("cron: db connect: %v", err)
 		// Deliberately without the error text: DATABASE_URL carries a password
 		// and pgx errors can quote the connection string. The log has it.
-		reportProblems(ctx, cfg, "Keine Verbindung zur Datenbank")
-		http.Error(w, "db error", http.StatusInternalServerError)
-		return
+		return []string{"Keine Verbindung zur Datenbank"}
 	}
 	defer func() {
 		if err := conn.Close(ctx); err != nil {
@@ -90,24 +142,7 @@ func Cron(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
-	duties := dutiesFor(now.Weekday())
-	if len(duties) == 0 {
-		w.WriteHeader(http.StatusOK)
-		return
-	}
-	window := duties[0].Window(now)
-
-	chatID, err := strconv.ParseInt(cfg.ChatID, 10, 64)
-	if err != nil {
-		log.Printf("cron: invalid CHAT_ID: %v", err)
-		reportProblems(ctx, cfg, "CHAT_ID ist keine Zahl — die Erinnerung hat kein Ziel")
-		http.Error(w, "config error", http.StatusInternalServerError)
-		return
-	}
-
-	// One duty type's query failure doesn't drop the others from the reminder.
-	var lines []string
-	var problems []string
+	var lines, problems []string
 	for _, dutyType := range duties {
 		result, err := schedule.GetOnDuty(ctx, conn, dutyType, now)
 		if err != nil {
@@ -123,21 +158,15 @@ func Cron(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if len(lines) > 0 {
+		window := duties[0].Window(now)
 		text := fmt.Sprintf("🏠 *Erinnerung — %s*\n\n%s", window, strings.Join(lines, "\n"))
-		if err := telegram.New(cfg.TelegramToken).Send(ctx, chatID, text); err != nil {
+		if err := c.bot.Send(ctx, c.cfg.ChatID, text); err != nil {
 			log.Printf("cron: send: %v", err)
 			problems = append(problems, fmt.Sprintf("Erinnerung nicht zustellbar: %v", err))
 		}
 	}
 
-	problems = append(problems, horizonProblems(ctx, conn, cfg, now)...)
-
-	if len(problems) > 0 {
-		reportProblems(ctx, cfg, problems...)
-		http.Error(w, "partial failure", http.StatusInternalServerError)
-		return
-	}
-	w.WriteHeader(http.StatusOK)
+	return append(problems, c.horizonProblems(ctx, conn, now)...)
 }
 
 // reportProblems reports a cron run that could not do its job to ADMIN_CHAT_ID,
@@ -153,29 +182,19 @@ func Cron(w http.ResponseWriter, r *http.Request) {
 // the fault is Telegram itself the notice cannot get through either — it is
 // still attempted, since a send can fail for reasons specific to the group
 // (the bot removed from it, say) while a private message still lands.
-func reportProblems(ctx context.Context, cfg config.Config, problems ...string) {
-	if cfg.AdminChatID == "" || len(problems) == 0 {
+func (c cronRun) reportProblems(ctx context.Context, problems ...string) {
+	if c.cfg.AdminChatID == 0 || len(problems) == 0 {
 		return
 	}
-	if err := sendToAdmin(ctx, cfg, adminNotice(problems)); err != nil {
+	if err := c.sendToAdmin(ctx, adminNotice(problems)); err != nil {
 		log.Printf("cron: report problems: %v", err)
 	}
 }
 
 // sendToAdmin delivers text to ADMIN_CHAT_ID. SendPlain, not Send: error texts
 // are arbitrary and would trip Markdown parsing.
-func sendToAdmin(ctx context.Context, cfg config.Config, text string) error {
-	adminID, err := strconv.ParseInt(cfg.AdminChatID, 10, 64)
-	if err != nil {
-		return fmt.Errorf("invalid ADMIN_CHAT_ID: %w", err)
-	}
-	return sendPlain(ctx, telegram.New(cfg.TelegramToken), adminID, text)
-}
-
-// sendPlain is the Bot API's sendMessage without Markdown, a variable so
-// tests can substitute one instead of reaching the Bot API.
-var sendPlain = func(ctx context.Context, bot *telegram.Client, chatID int64, text string) error {
-	return bot.SendPlain(ctx, chatID, text)
+func (c cronRun) sendToAdmin(ctx context.Context, text string) error {
+	return c.bot.SendPlain(ctx, c.cfg.AdminChatID, text)
 }
 
 // adminNotice renders the problems as one message.
@@ -194,11 +213,11 @@ func adminNotice(problems []string) string {
 // noise. The reminder has already gone out by now, so a failure here can't cost
 // it; it joins the run's problems because a check that fails silently is the
 // shortage it exists to catch.
-func horizonProblems(ctx context.Context, conn schedule.Querier, cfg config.Config, now time.Time) []string {
+func (c cronRun) horizonProblems(ctx context.Context, conn schedule.Querier, now time.Time) []string {
 	if now.Weekday() != weeklyReminderDay {
 		return nil
 	}
-	if err := warnHorizon(ctx, conn, cfg, now); err != nil {
+	if err := c.warnHorizon(ctx, conn, now); err != nil {
 		log.Printf("cron: horizon: %v", err)
 		return []string{fmt.Sprintf("Putzplan nicht prüfbar: %v", err)}
 	}
@@ -209,8 +228,8 @@ func horizonProblems(ctx context.Context, conn schedule.Querier, cfg config.Conf
 // out of planned weeks. With ADMIN_CHAT_ID unset it does nothing: the notice
 // is a maintenance chore, and pushing it to the group instead would tell seven
 // people about work only one of them can do.
-func warnHorizon(ctx context.Context, conn schedule.Querier, cfg config.Config, now time.Time) error {
-	if cfg.AdminChatID == "" {
+func (c cronRun) warnHorizon(ctx context.Context, conn schedule.Querier, now time.Time) error {
+	if c.cfg.AdminChatID == 0 {
 		return nil
 	}
 	gaps, err := schedule.HorizonGaps(ctx, conn, schedule.HorizonDuties(), now)
@@ -221,5 +240,5 @@ func warnHorizon(ctx context.Context, conn schedule.Querier, cfg config.Config, 
 	if text == "" {
 		return nil
 	}
-	return sendToAdmin(ctx, cfg, text)
+	return c.sendToAdmin(ctx, text)
 }

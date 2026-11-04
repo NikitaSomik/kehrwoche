@@ -43,14 +43,17 @@ func main() {
 }
 
 func run(ctx context.Context, show bool) error {
-	cfg := config.Load()
+	cfg, err := config.Load()
+	if err != nil {
+		return err
+	}
 	if cfg.TelegramToken == "" {
 		return fmt.Errorf("TELEGRAM_BOT_TOKEN is not set")
 	}
 	bot := telegram.New(cfg.TelegramToken)
-	groupID, ok := cfg.GroupID()
-	if !ok {
-		return fmt.Errorf("CHAT_ID is not set or invalid")
+	groupID := cfg.ChatID
+	if groupID == 0 {
+		return fmt.Errorf("CHAT_ID is not set")
 	}
 
 	if show {

@@ -78,7 +78,11 @@ func run(ctx context.Context) error {
 // withConn opens a short-lived connection per call, matching the api/ handlers
 // — a *pgx.Conn is not safe for the concurrent calls an MCP client can make.
 func withConn(ctx context.Context, fn func(context.Context, *pgx.Conn) error) error {
-	conn, err := db.Connect(ctx, config.Load().DatabaseURL)
+	cfg, err := config.Load()
+	if err != nil {
+		return err
+	}
+	conn, err := db.Connect(ctx, cfg.DatabaseURL)
 	if err != nil {
 		return err
 	}

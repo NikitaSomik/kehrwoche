@@ -213,7 +213,11 @@ func run(ctx context.Context, a *asker, f cliFlags) error {
 		return a.stop(err)
 	}
 
-	conn, err := db.Connect(ctx, config.Load().DatabaseURL)
+	cfg, err := config.Load()
+	if err != nil {
+		return err
+	}
+	conn, err := db.Connect(ctx, cfg.DatabaseURL)
 	if err != nil {
 		return err
 	}

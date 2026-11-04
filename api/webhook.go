@@ -26,7 +26,7 @@ func Webhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cfg := config.Load()
+	cfg, cfgErr := config.Load()
 
 	// Reject requests without the Telegram webhook secret to block fake updates.
 	// Fail-closed: if the secret is not configured, deny all requests.
@@ -40,6 +40,13 @@ func Webhook(w http.ResponseWriter, r *http.Request) {
 	// Always 200 — Telegram retries on any non-200, which causes duplicate messages.
 	// Errors are logged but never returned as HTTP errors to Telegram.
 	w.WriteHeader(http.StatusOK)
+
+	// A variable that doesn't parse is left unset, which turns off what
+	// depends on it (an unreadable ADMIN_CHAT_ID turns off the onboarding);
+	// the rest keeps working. Logged on every update until it is fixed.
+	if cfgErr != nil {
+		log.Printf("webhook: config: %v", cfgErr)
+	}
 
 	// Updates are a few KB; the cap stops a caller holding the secret from
 	// making the function read without bound.
@@ -78,8 +85,8 @@ func Webhook(w http.ResponseWriter, r *http.Request) {
 // they write.
 func handleMessage(ctx context.Context, cfg config.Config, bot *telegram.Client, msg *telegram.Message) {
 	cmd := msg.Command()
-	groupID, ok := cfg.GroupID()
-	if !ok || msg.Chat == nil || msg.From == nil {
+	groupID := cfg.ChatID
+	if groupID == 0 || msg.Chat == nil || msg.From == nil {
 		return
 	}
 	if msg.Chat.ID == groupID {
@@ -92,7 +99,7 @@ func handleMessage(ctx context.Context, cfg config.Config, bot *telegram.Client,
 		return
 	}
 
-	status, err := memberStatus(ctx, bot, groupID, msg.From.ID)
+	status, err := bot.GetMemberStatus(ctx, groupID, msg.From.ID)
 	if err != nil {
 		log.Printf("webhook: member status: %v", err)
 		return
@@ -128,11 +135,6 @@ func handleMessage(ctx context.Context, cfg config.Config, bot *telegram.Client,
 			log.Printf("webhook: send start: %v", err)
 		}
 	}
-}
-
-// memberStatus is the getChatMember lookup, a variable so tests need no Bot API.
-var memberStatus = func(ctx context.Context, bot *telegram.Client, chatID, userID int64) (telegram.MemberStatus, error) {
-	return bot.GetMemberStatus(ctx, chatID, userID)
 }
 
 func answerCommand(ctx context.Context, cfg config.Config, bot *telegram.Client, msg *telegram.Message, cmd string) {
@@ -180,9 +182,7 @@ func onboardingEnabled(cfg config.Config) bool {
 }
 
 func onboardingChats(cfg config.Config) (groupID, adminID int64, ok bool) {
-	groupID, okGroup := cfg.GroupID()
-	adminID, okAdmin := cfg.AdminID()
-	return groupID, adminID, cfg.OnboardingEnabled && okGroup && okAdmin
+	return cfg.ChatID, cfg.AdminChatID, cfg.OnboardingEnabled && cfg.ChatID != 0 && cfg.AdminChatID != 0
 }
 
 func withFlow(ctx context.Context, cfg config.Config, bot *telegram.Client, what string, step func(onboard.Flow) error) {
