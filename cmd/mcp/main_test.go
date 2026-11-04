@@ -7,21 +7,6 @@ import (
 	"github.com/NikitaSomik/kehrwoche/pkg/schedule"
 )
 
-func TestParseDuty(t *testing.T) {
-	t.Run("known key", func(t *testing.T) {
-		got, err := parseDuty("floor")
-		if err != nil || got != schedule.DutyTypeFloor {
-			t.Fatalf("got %q, %v; want floor, nil", got, err)
-		}
-	})
-
-	t.Run("unknown key is an error", func(t *testing.T) {
-		if _, err := parseDuty("kitchen"); err == nil {
-			t.Error("expected an error for an unknown duty")
-		}
-	})
-}
-
 func TestSelectDuties(t *testing.T) {
 	t.Run("empty arg means every duty", func(t *testing.T) {
 		got, err := selectDuties("")

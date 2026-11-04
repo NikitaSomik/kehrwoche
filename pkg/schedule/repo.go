@@ -68,7 +68,13 @@ func HorizonGaps(ctx context.Context, conn Querier, dutyTypes []DutyType, now ti
 	return gaps, nil
 }
 
+// GetUpcoming returns the next n assignments of dutyType from from on, one
+// per event day, with Room empty where the schedule has no row. n <= 0 asks
+// for nothing and gets nothing, without a query.
 func GetUpcoming(ctx context.Context, conn Querier, dutyType DutyType, from time.Time, n int) ([]Entry, error) {
+	if n <= 0 {
+		return nil, nil
+	}
 	dates := make([]time.Time, n)
 	dates[0] = dutyType.UpcomingEventDate(from)
 	for i := 1; i < n; i++ {
