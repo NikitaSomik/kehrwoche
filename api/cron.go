@@ -124,7 +124,7 @@ func Cron(w http.ResponseWriter, r *http.Request) {
 
 	if len(lines) > 0 {
 		text := fmt.Sprintf("🏠 *Erinnerung — %s*\n\n%s", window, strings.Join(lines, "\n"))
-		if err := telegram.Send(ctx, http.DefaultClient, cfg.TelegramToken, chatID, text); err != nil {
+		if err := telegram.New(cfg.TelegramToken).Send(ctx, chatID, text); err != nil {
 			log.Printf("cron: send: %v", err)
 			problems = append(problems, fmt.Sprintf("Erinnerung nicht zustellbar: %v", err))
 		}
@@ -169,12 +169,14 @@ func sendToAdmin(ctx context.Context, cfg config.Config, text string) error {
 	if err != nil {
 		return fmt.Errorf("invalid ADMIN_CHAT_ID: %w", err)
 	}
-	return sendPlain(ctx, http.DefaultClient, cfg.TelegramToken, adminID, text)
+	return sendPlain(ctx, telegram.New(cfg.TelegramToken), adminID, text)
 }
 
-// sendPlain is telegram.SendPlain, a variable so tests can substitute one
-// instead of reaching the Bot API.
-var sendPlain = telegram.SendPlain
+// sendPlain is the Bot API's sendMessage without Markdown, a variable so
+// tests can substitute one instead of reaching the Bot API.
+var sendPlain = func(ctx context.Context, bot *telegram.Client, chatID int64, text string) error {
+	return bot.SendPlain(ctx, chatID, text)
+}
 
 // adminNotice renders the problems as one message.
 func adminNotice(problems []string) string {

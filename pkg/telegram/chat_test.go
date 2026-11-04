@@ -25,7 +25,7 @@ func TestGetMemberStatus(t *testing.T) {
 	}
 	for _, tc := range cases {
 		client, body, path := capturingClient(http.StatusOK, `{"ok":true,"result":`+tc.result+`}`)
-		got, err := GetMemberStatus(context.Background(), client, "T", -100, 7)
+		got, err := client.GetMemberStatus(context.Background(), -100, 7)
 		if err != nil {
 			t.Fatalf("%s: %v", tc.result, err)
 		}
@@ -39,15 +39,15 @@ func TestGetMemberStatus(t *testing.T) {
 }
 
 func TestGetMemberStatusError(t *testing.T) {
-	client := fakeClient(http.StatusBadRequest, `{"ok":false,"description":"Bad Request: chat not found"}`, nil)
-	if _, err := GetMemberStatus(context.Background(), client, "T", -100, 7); err == nil {
+	client := fakeClient(http.StatusBadRequest, `{"ok":false,"error_code":400,"description":"Bad Request: chat not found"}`, nil)
+	if _, err := client.GetMemberStatus(context.Background(), -100, 7); err == nil {
 		t.Error("want an error")
 	}
 }
 
 func TestSetChatCommands(t *testing.T) {
-	client, body, path := capturingClient(http.StatusOK, `{"ok":true,"result":true}`)
-	if err := SetChatCommands(context.Background(), client, "T", []Command{{Command: "help", Description: "x"}}, 7); err != nil {
+	client, body, path := capturingClient(http.StatusOK, okBody)
+	if err := client.SetChatCommands(context.Background(), []Command{{Command: "help", Description: "x"}}, 7); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.HasSuffix(*path, "/setMyCommands") || !strings.Contains(*body, `"scope":{"chat_id":7,"type":"chat"}`) {
@@ -56,8 +56,8 @@ func TestSetChatCommands(t *testing.T) {
 }
 
 func TestDeleteCommands(t *testing.T) {
-	client, body, path := capturingClient(http.StatusOK, `{"ok":true,"result":true}`)
-	if err := DeleteCommands(context.Background(), client, "T", "all_group_chats"); err != nil {
+	client, body, path := capturingClient(http.StatusOK, okBody)
+	if err := client.DeleteCommands(context.Background(), "all_group_chats"); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.HasSuffix(*path, "/deleteMyCommands") || !strings.Contains(*body, `"scope":{"type":"all_group_chats"}`) {
@@ -67,7 +67,7 @@ func TestDeleteCommands(t *testing.T) {
 
 func TestRevokeInviteLink(t *testing.T) {
 	client, body, path := capturingClient(http.StatusOK, `{"ok":true,"result":{}}`)
-	if err := RevokeInviteLink(context.Background(), client, "T", -100, "https://t.me/+x"); err != nil {
+	if err := client.RevokeInviteLink(context.Background(), -100, "https://t.me/+x"); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.HasSuffix(*path, "/revokeChatInviteLink") || !strings.Contains(*body, `"invite_link":"https://t.me/+x"`) {
@@ -76,9 +76,9 @@ func TestRevokeInviteLink(t *testing.T) {
 }
 
 func TestSendKeyboard(t *testing.T) {
-	client, body, _ := capturingClient(http.StatusOK, `{"ok":true}`)
+	client, body, _ := capturingClient(http.StatusOK, okBody)
 	rows := [][]Button{{{Text: "P", URL: ProfileURL(42)}}, {{Text: "1", Data: "room:1"}}}
-	if err := SendKeyboard(context.Background(), client, "T", 7, "Zimmer?", rows); err != nil {
+	if err := client.SendKeyboard(context.Background(), 7, "Zimmer?", rows); err != nil {
 		t.Fatal(err)
 	}
 	want := `"reply_markup":{"inline_keyboard":[[{"text":"P","url":"tg://user?id=42"}],[{"text":"1","callback_data":"room:1"}]]}`
@@ -91,8 +91,8 @@ func TestSendKeyboard(t *testing.T) {
 }
 
 func TestSetMemberTag(t *testing.T) {
-	client, body, path := capturingClient(http.StatusOK, `{"ok":true,"result":true}`)
-	if err := SetMemberTag(context.Background(), client, "T", -100, 7, "3"); err != nil {
+	client, body, path := capturingClient(http.StatusOK, okBody)
+	if err := client.SetMemberTag(context.Background(), -100, 7, "3"); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.HasSuffix(*path, "/setChatMemberTag") || !strings.Contains(*body, `"tag":"3"`) {
@@ -103,7 +103,7 @@ func TestSetMemberTag(t *testing.T) {
 func TestCreateJoinRequestLink(t *testing.T) {
 	client, body, _ := capturingClient(http.StatusOK, `{"ok":true,"result":{"invite_link":"https://t.me/+xyz","creates_join_request":true}}`)
 	expire := time.Unix(1800000000, 0)
-	link, err := CreateJoinRequestLink(context.Background(), client, "T", -100, "Onboarding 7", expire)
+	link, err := client.CreateJoinRequestLink(context.Background(), -100, "Onboarding 7", expire)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -123,14 +123,14 @@ func TestCreateJoinRequestLink(t *testing.T) {
 
 func TestCreateJoinRequestLinkEmpty(t *testing.T) {
 	client := fakeClient(http.StatusOK, `{"ok":true,"result":{}}`, nil)
-	if _, err := CreateJoinRequestLink(context.Background(), client, "T", -100, "x", time.Now()); err == nil {
+	if _, err := client.CreateJoinRequestLink(context.Background(), -100, "x", time.Now()); err == nil {
 		t.Error("want an error for a response without a link")
 	}
 }
 
 func TestSetWebhook(t *testing.T) {
-	client, body, _ := capturingClient(http.StatusOK, `{"ok":true,"result":true}`)
-	err := SetWebhook(context.Background(), client, "T", "https://x/api/webhook", "s3cret", []string{"message", "callback_query"})
+	client, body, _ := capturingClient(http.StatusOK, okBody)
+	err := client.SetWebhook(context.Background(), "https://x/api/webhook", "s3cret", []string{"message", "callback_query"})
 	if err != nil {
 		t.Fatal(err)
 	}
