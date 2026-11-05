@@ -8,6 +8,16 @@
 // The request is approved only through the link issued to that user, which is
 // revoked once used. Rejected users are ignored from then on; members just get
 // a greeting. The only state between updates is the users row.
+//
+// A member who leaves or is removed (a chat_member update) gets users.left_at,
+// and ADMIN_CHAT_ID a notice naming their room so the rotation can be checked.
+// A former member goes through the whole flow again: the old room is cleared,
+// and the card and the welcome say they are back.
+//
+// Callback data (approve:<uid>, reject:<uid>, room:<n>, change:<uid>) arrives
+// from outside, so it is parsed strictly and checked against who pressed the
+// button and where: approve and reject only by an admin of the WG group, room
+// and change only in the presser's own private chat.
 package onboard
 
 import (

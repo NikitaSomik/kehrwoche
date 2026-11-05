@@ -1,3 +1,4 @@
+// Package db opens the Postgres connection the functions and CLIs share.
 package db
 
 import (
