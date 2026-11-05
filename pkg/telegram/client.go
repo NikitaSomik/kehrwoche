@@ -104,8 +104,7 @@ func (c *Client) call(ctx context.Context, method string, payload, out any) erro
 		// http.Client wraps transport failures in a *url.Error whose Error()
 		// includes the full request URL — and thus the bot token. Unwrap to
 		// the underlying error before it reaches logs.
-		var uerr *url.Error
-		if errors.As(err, &uerr) {
+		if uerr, ok := errors.AsType[*url.Error](err); ok {
 			err = uerr.Err
 		}
 		return fmt.Errorf("telegram: %s failed: %w", method, err)

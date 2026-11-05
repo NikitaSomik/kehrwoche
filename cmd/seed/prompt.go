@@ -466,7 +466,7 @@ func (a *asker) typeKeys(question string, opts []choice, on []bool) ([]bool, err
 	}
 
 	next := make([]bool, len(on))
-	for _, part := range strings.Split(answer, ",") {
+	for part := range strings.SplitSeq(answer, ",") {
 		part = strings.TrimSpace(part)
 		if part == "" {
 			continue
