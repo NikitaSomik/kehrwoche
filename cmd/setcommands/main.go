@@ -1,9 +1,13 @@
-// Command setcommands sets the command menu for the WG group (CHAT_ID) and
-// removes it from every broad scope, so strangers see none. Group admins get
-// it in their own private chat when they send /start (api/webhook.go). It hits
+// Command setcommands sets the command menu for the WG group (CHAT_ID), /start
+// alone for all private chats, and deletes the menu from the other broad
+// scopes (default, all group chats, all chat administrators), so strangers see
+// nothing but /start. Telegram's Start button shows only in a fresh chat, so
+// the private menu keeps /start one tap away for someone who wrote before.
+// Group admins get the full menu in their own private chat when they send
+// /start (api/webhook.go), a chat scope that overrides the private one. It hits
 // the Telegram API — run it by hand.
 //
-//	task setcommands           # menu for the group, none elsewhere
+//	task setcommands           # menu for the group, /start in private, none elsewhere
 //	task setcommands -- -show   # print Telegram's current menus, change nothing
 package main
 

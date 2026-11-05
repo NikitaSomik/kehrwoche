@@ -20,6 +20,30 @@ import (
 
 const maxUpdateBytes = 1 << 20
 
+// Webhook receives Telegram updates: slash commands, button presses
+// (callback_query), join requests (chat_join_request) and members leaving
+// (chat_member). cmd/setwebhook's allowedUpdates must list every kind handled
+// here.
+//
+// Auth is the X-Telegram-Bot-Api-Secret-Token header, compared in constant
+// time and fail-closed. Once authenticated it always answers 200, because
+// Telegram retries anything else and the retry duplicates messages; errors are
+// only logged.
+//
+// Who gets what:
+//   - In the WG group (CHAT_ID) everyone gets the commands: posting there
+//     already proves membership. Other groups get nothing.
+//   - In private, one getChatMember lookup of the sender in the group decides
+//     (fail-closed on error or unset CHAT_ID). Group admins get every command,
+//     and their /start sets the command menu for their chat and lists them.
+//   - For anybody else only /start counts: members get a greeting, banned users
+//     nothing, the rest the onboarding (pkg/onboard). While the onboarding is
+//     on, anything else they write gets botcmd.JoinHint; while it is off
+//     (ONBOARDING_ENABLED not true, or CHAT_ID/ADMIN_CHAT_ID unset, see
+//     onboardingChats) /start is a plain greeting.
+//
+// Button presses, join requests and member updates go to onboard.Flow, gated
+// by the same onboardingChats. recordUser records whoever runs a duty command.
 func Webhook(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		w.WriteHeader(http.StatusMethodNotAllowed)

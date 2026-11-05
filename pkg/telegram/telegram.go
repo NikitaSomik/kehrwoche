@@ -1,5 +1,11 @@
 // Package telegram is the slice of the Telegram Bot API the bot uses: Client
 // for outbound calls, Update and friends for the webhook payload.
+//
+// Client is the only outbound HTTP in the project. Every call goes through one
+// method that decodes the Bot API's response envelope and keeps the bot token
+// out of errors. A refusal comes back as *APIError (with RetryAfter on 429);
+// anything else, a transport error or a timeout, as a plain error. Only an
+// *APIError proves nothing was sent.
 package telegram
 
 import "context"

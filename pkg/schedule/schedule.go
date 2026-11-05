@@ -1,3 +1,20 @@
+// Package schedule is the domain: duty types, their recurrence, rooms, date
+// math and the German message texts. The only I/O is repo.go, which holds all
+// SQL for the schedules table behind the Querier interface (a pgx connection,
+// or a fake in tests).
+//
+// Recurrence lives in configs: the weekly duties (toilet1, toilet2, hall,
+// floor) fall on Friday with a Fri–Sun window; laundry on Tuesday and Friday,
+// one day each. Derive new date or cadence logic from configs instead of
+// repeating weekday literals.
+//
+// Rooms are "Zimmer N", 1..RoomCount. Time is always Europe/Berlin, and every
+// user-facing text is German, weekdays abbreviated Mo..So.
+//
+// PlanWeeks is how far the /*_plan commands look ahead and HorizonWeeks, equal
+// to it, when the cron warns that a duty is running out. IsBlock marks the
+// duties planned one block at a time (only hall), which the horizon check and
+// cmd/seed's defaults leave out.
 package schedule
 
 import (

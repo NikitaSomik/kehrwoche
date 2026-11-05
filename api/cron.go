@@ -17,6 +17,9 @@ import (
 	"github.com/NikitaSomik/kehrwoche/pkg/telegram"
 )
 
+// weeklyDuties is a literal rather than schedule.WeeklyDuties() because it sets
+// the order of the reminder. TestWeeklyDutiesMatchSchedule checks the two hold
+// the same duties.
 var weeklyDuties = []schedule.DutyType{
 	schedule.DutyTypeFloor, schedule.DutyTypeToilet1,
 	schedule.DutyTypeToilet2, schedule.DutyTypeHall,
@@ -58,6 +61,19 @@ type cronRun struct {
 	now    time.Time
 }
 
+// Cron sends the day's duty reminder to the group. Auth is
+// "Authorization: Bearer <CRON_SECRET>", fail-closed.
+//
+// Vercel Cron runs in UTC only, so vercel.json fires at both UTC hours
+// schedule.ReminderHour can fall on (winter and summer time), and a run returns
+// before connecting to the DB unless it is ReminderHour in Berlin. A day
+// without duties ends before connecting too, and so does a manual "Run" from
+// the Vercel dashboard outside that hour. On the Hobby plan a run starts
+// anywhere within its hour, so the reminder lands at 10:xx Berlin all year.
+//
+// A run that can't do its job tells ADMIN_CHAT_ID privately (reportProblems),
+// never the group. Once a week it also checks that the rolling-horizon duties
+// are planned far enough ahead (horizonProblems).
 func Cron(w http.ResponseWriter, r *http.Request) {
 	cfg, err := config.Load()
 	cronRun{cfg: cfg, cfgErr: err, bot: telegram.New(cfg.TelegramToken), now: time.Now()}.serve(w, r)
