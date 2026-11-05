@@ -8,6 +8,7 @@ linters:
     - staticcheck
     - unused
     - gosec
+    - modernize
   exclusions:
     presets:
       - std-error-handling

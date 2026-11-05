@@ -347,7 +347,7 @@ func roomsIn(duties []schedule.DutyType) []int {
 
 func parseVacant(raw string) (map[int]bool, error) {
 	vacant := make(map[int]bool)
-	for _, part := range strings.Split(raw, ",") {
+	for part := range strings.SplitSeq(raw, ",") {
 		part = strings.TrimSpace(part)
 		if part == "" {
 			continue
@@ -748,7 +748,7 @@ func selectedDuties(flagVal string) ([]schedule.DutyType, error) {
 		return defaultDuties(), nil
 	}
 	want := make(map[schedule.DutyType]bool)
-	for _, part := range strings.Split(flagVal, ",") {
+	for part := range strings.SplitSeq(flagVal, ",") {
 		want[schedule.DutyType(strings.TrimSpace(part))] = true
 	}
 	var out []schedule.DutyType
