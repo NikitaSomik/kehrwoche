@@ -130,6 +130,31 @@ func TestPlan(t *testing.T) {
 	}
 }
 
+// The menu used to be a hand-written list; the texts generated from duties
+// must stay what Telegram's menu showed.
+func TestCommandsFromDuties(t *testing.T) {
+	want := map[string]string{
+		"toilette1":        "Wer putzt diese Woche die Toilette 1?",
+		"treppenhaus":      "Wer putzt diese Woche das Treppenhaus?",
+		"waschkueche_plan": "Plan für die nächsten 4 Wochen (Waschküche)",
+	}
+	if len(commands) != 2*len(duties) {
+		t.Errorf("%d commands for %d duties, want two each", len(commands), len(duties))
+	}
+	for i, c := range commands {
+		wantName := duties[i/2].name
+		if i%2 == 1 {
+			wantName += planSuffix
+		}
+		if c.name != wantName {
+			t.Errorf("commands[%d] = /%s, want /%s", i, c.name, wantName)
+		}
+		if w, ok := want[c.name]; ok && c.desc != w {
+			t.Errorf("/%s: %q, want %q", c.name, c.desc, w)
+		}
+	}
+}
+
 func TestLookup(t *testing.T) {
 	if _, ok := Lookup("toilette1"); !ok {
 		t.Error("Lookup(toilette1) not found")
@@ -171,7 +196,7 @@ func TestStaticReply(t *testing.T) {
 }
 
 func TestHelpMessageListsEveryDuty(t *testing.T) {
-	for _, c := range duties {
+	for _, c := range commands {
 		if !strings.Contains(helpMessage.Plain, "/"+c.name+" —") {
 			t.Errorf("helpMessage.Plain has no entry for /%s", c.name)
 		}

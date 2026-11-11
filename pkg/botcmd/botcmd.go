@@ -1,5 +1,5 @@
-// Package botcmd defines the bot's slash commands: the duty commands (each a
-// menu name, a German description, and a handler) and the static /help and
+// Package botcmd defines the bot's slash commands: two per duty (who is on
+// this week, and the plan), built from the duties table, and the static /help and
 // /start replies. api/webhook.go dispatches to it; cmd/setcommands pushes the
 // menu to Telegram.
 //
@@ -21,42 +21,52 @@ import (
 // Handler answers one command, given a DB accessor and the current time.
 type Handler func(ctx context.Context, conn schedule.Querier, now time.Time) (telegram.Rich, error)
 
-// command couples a menu name, its German description (shown in Telegram's
-// command menu and /help), the duty it is about, and its handler — the single
-// source of truth.
+// duty is one cleaning duty the bot answers for. Each one serves two
+// commands: /<name> (who is on this week) and /<name>_plan (the coming weeks).
+// Menu, Lookup and /help are all built from duties, so a duty added here is
+// complete everywhere.
+type duty struct {
+	name string // command name, e.g. "etage"
+	typ  schedule.DutyType
+	what string // the duty with its article, for the menu: "die Etage"
+}
+
+// duties are in menu order: cmd/setcommands pushes them to Telegram this way.
+var duties = []duty{
+	{"toilette1", schedule.DutyTypeToilet1, "die Toilette 1"},
+	{"toilette2", schedule.DutyTypeToilet2, "die Toilette 2"},
+	{"treppenhaus", schedule.DutyTypeHall, "das Treppenhaus"},
+	{"etage", schedule.DutyTypeFloor, "die Etage"},
+	{"waschkueche", schedule.DutyTypeLaundry, "die Waschküche"},
+}
+
+const planSuffix = "_plan"
+
+func (d duty) planName() string { return d.name + planSuffix }
+
+// command is one menu entry: name, German description (shown in Telegram's
+// command menu and /help) and handler.
 type command struct {
 	name    string
 	desc    string
-	duty    schedule.DutyType
 	handler Handler
 }
 
-// duties: keep each wer/plan pair together and in this order — /help groups by
-// the pair, and cmd/setcommands pushes them to Telegram in this order.
-var duties = []command{
-	werCmd("toilette1", "Wer putzt diese Woche die Toilette 1?", schedule.DutyTypeToilet1),
-	planCmd("toilette1_plan", "Plan für die nächsten 4 Wochen (Toilette 1)", schedule.DutyTypeToilet1),
-	werCmd("toilette2", "Wer putzt diese Woche die Toilette 2?", schedule.DutyTypeToilet2),
-	planCmd("toilette2_plan", "Plan für die nächsten 4 Wochen (Toilette 2)", schedule.DutyTypeToilet2),
-	werCmd("treppenhaus", "Wer putzt diese Woche das Treppenhaus?", schedule.DutyTypeHall),
-	planCmd("treppenhaus_plan", "Plan für die nächsten 4 Wochen (Treppenhaus)", schedule.DutyTypeHall),
-	werCmd("etage", "Wer putzt diese Woche die Etage?", schedule.DutyTypeFloor),
-	planCmd("etage_plan", "Plan für die nächsten 4 Wochen (Etage)", schedule.DutyTypeFloor),
-	werCmd("waschkueche", "Wer putzt diese Woche die Waschküche?", schedule.DutyTypeLaundry),
-	planCmd("waschkueche_plan", "Plan für die nächsten 4 Wochen (Waschküche)", schedule.DutyTypeLaundry),
-}
-
-func werCmd(name, desc string, d schedule.DutyType) command {
-	return command{name: name, desc: desc, duty: d, handler: wer(d)}
-}
-
-func planCmd(name, desc string, d schedule.DutyType) command {
-	return command{name: name, desc: desc, duty: d, handler: plan(d)}
-}
+// commands expands duties into the menu: each duty's command, then its plan.
+var commands = func() []command {
+	out := make([]command, 0, 2*len(duties))
+	for _, d := range duties {
+		out = append(out,
+			command{d.name, fmt.Sprintf("Wer putzt diese Woche %s?", d.what), wer(d.typ)},
+			command{d.planName(), fmt.Sprintf("Plan für die nächsten %d Wochen (%s)", schedule.PlanWeeks, d.typ.Label()), plan(d.typ)},
+		)
+	}
+	return out
+}()
 
 var handlers = func() map[string]Handler {
-	m := make(map[string]Handler, len(duties))
-	for _, c := range duties {
+	m := make(map[string]Handler, len(commands))
+	for _, c := range commands {
 		m[c.name] = c.handler
 	}
 	return m
@@ -71,8 +81,8 @@ func Lookup(name string) (Handler, bool) {
 
 // Menu is the setMyCommands list in menu order: the duty commands, then /help.
 func Menu() []telegram.Command {
-	out := make([]telegram.Command, 0, len(duties)+1)
-	for _, c := range duties {
+	out := make([]telegram.Command, 0, len(commands)+1)
+	for _, c := range commands {
 		out = append(out, telegram.Command{Command: c.name, Description: c.desc})
 	}
 	return append(out, telegram.Command{Command: "help", Description: "Alle Befehle anzeigen"})
@@ -99,12 +109,14 @@ func buildHelpMessage() telegram.Rich {
 	var plain strings.Builder
 	plain.WriteString(helpTitle + "\n")
 	var rows [][]string
-	for _, c := range duties {
-		if !strings.HasSuffix(c.name, "_plan") {
+	for i, c := range commands {
+		if i%2 == 0 { // a duty's first command opens its group
 			plain.WriteByte('\n')
-			rows = append(rows, []string{c.duty.Label(), "/" + c.name, "/" + c.name + "_plan"})
 		}
 		fmt.Fprintf(&plain, "/%s — %s\n", c.name, c.desc)
+	}
+	for _, d := range duties {
+		rows = append(rows, []string{d.typ.Label(), "/" + d.name, "/" + d.planName()})
 	}
 	cadence := fmt.Sprintf("Der Bot meldet sich hier automatisch %s gegen %d Uhr.",
 		reminderDays(), schedule.ReminderHour)
@@ -138,7 +150,7 @@ func reminderDays() string {
 	}
 }
 
-// The two commands answered from canned text rather than the duties slice.
+// The two commands answered from canned text rather than from duties.
 // Exported so the webhook can single out /start without repeating the literal.
 const (
 	CmdHelp  = "help"
