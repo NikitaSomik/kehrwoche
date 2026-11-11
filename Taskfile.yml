@@ -37,6 +37,13 @@ tasks:
       # group chat could be reached. Only ADMIN_CHAT_ID hears about it.
       - go test -tags=smoke -count=1 -v -run TestCronNotifiesAdminOnFailure ./api/
 
+  smoke:rich:
+    desc: Send /help, a reminder table and the coloured/disabled buttons to ADMIN_CHAT_ID — hits the Telegram API, run manually only
+    cmds:
+      # Only ADMIN_CHAT_ID gets them; fails if Telegram refused a rich message
+      # and the plain fallback went out instead.
+      - go test -tags=smoke -count=1 -v -run TestRichMessagesReachAdmin ./api/
+
   fmt:
     desc: Format Go source files
     cmds:

@@ -22,6 +22,7 @@ Always use `task` (CI runs these exact tasks — don't call `go test`/`go vet` d
 | `task setwebhook` | re-register the webhook — **hits the Telegram API, run manually only** |
 | `task setcommands` | push the command menus — **hits the Telegram API, run manually only** |
 | `task smoke:cron` | send a real failure notice to `ADMIN_CHAT_ID` — **hits the Telegram API, run manually only** |
+| `task smoke:rich` | send `/help`, a reminder table and the new buttons to `ADMIN_CHAT_ID` — **hits the Telegram API, run manually only** |
 
 Before committing: `task fmt && task vet && task lint && task test`.
 
