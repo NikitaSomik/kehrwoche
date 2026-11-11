@@ -40,6 +40,7 @@ type Bot interface {
 	SendPlain(ctx context.Context, chatID int64, text string) error
 	SendKeyboard(ctx context.Context, chatID int64, text string, rows [][]telegram.Button) error
 	EditText(ctx context.Context, chatID int64, messageID int, text string) error
+	EditKeyboard(ctx context.Context, chatID int64, messageID int, rows [][]telegram.Button) error
 	AnswerCallback(ctx context.Context, callbackID, text string) error
 	SetMemberTag(ctx context.Context, chatID, userID int64, tag string) error
 	ApproveJoinRequest(ctx context.Context, chatID, userID int64) error
@@ -213,11 +214,7 @@ func (f Flow) decide(ctx context.Context, q *telegram.CallbackQuery, uid int64, 
 		verdict = "✅ Angenommen"
 	}
 	var errs []error
-	card := q.Message.Text + "\n\n" + verdict
-	if name := q.From.Name(); name != "" {
-		card += " von " + name
-	}
-	if err := f.Bot.EditText(ctx, q.Message.Chat.ID, q.Message.MessageID, card); err != nil {
+	if err := f.retireCard(ctx, q, verdict); err != nil {
 		errs = append(errs, fmt.Errorf("retire card: %w", err))
 	}
 	if approve {
@@ -229,6 +226,24 @@ func (f Flow) decide(ctx context.Context, q *telegram.CallbackQuery, uid int64, 
 		errs = append(errs, fmt.Errorf("tell user: %w", err))
 	}
 	return verdict, errors.Join(errs...)
+}
+
+// retireCard swaps the card's buttons for a disabled one saying who decided
+// what, so the card stays as it was and nobody can press it again. If Telegram
+// refuses the disabled button, the verdict goes into the text instead and the
+// buttons are dropped.
+func (f Flow) retireCard(ctx context.Context, q *telegram.CallbackQuery, verdict string) error {
+	if name := q.From.Name(); name != "" {
+		verdict += " von " + name
+	}
+	chatID, msgID := q.Message.Chat.ID, q.Message.MessageID
+	err := f.Bot.EditKeyboard(ctx, chatID, msgID, [][]telegram.Button{{
+		{Text: verdict, Disabled: &telegram.DisabledButton{}},
+	}})
+	if !refused(err) {
+		return err
+	}
+	return f.Bot.EditText(ctx, chatID, msgID, q.Message.Text+"\n\n"+verdict)
 }
 
 func (f Flow) chooseRoom(ctx context.Context, q *telegram.CallbackQuery, room int) (string, error) {
@@ -430,7 +445,7 @@ func welcome(u *telegram.User, room int, returning bool) string {
 	return fmt.Sprintf("%s! Zimmer %d.", greeting, room)
 }
 
-// decisionKeyboard is the card's ✅ / ❌ row, under a button opening the
+// decisionKeyboard is the card's green ✅ / red ❌ row, under a button opening the
 // user's real profile when withProfile: names and usernames are anyone's to
 // pick, the profile behind the id is not.
 func decisionKeyboard(uid int64, withProfile bool) [][]telegram.Button {
@@ -440,8 +455,8 @@ func decisionKeyboard(uid int64, withProfile bool) [][]telegram.Button {
 		rows = append(rows, []telegram.Button{{Text: "👤 Profil öffnen", URL: telegram.ProfileURL(uid)}})
 	}
 	return append(rows, []telegram.Button{
-		{Text: "✅ Annehmen", Data: actApprove + ":" + id},
-		{Text: "❌ Ablehnen", Data: actReject + ":" + id},
+		{Text: "✅ Annehmen", Data: actApprove + ":" + id, Style: telegram.StyleSuccess},
+		{Text: "❌ Ablehnen", Data: actReject + ":" + id, Style: telegram.StyleDanger},
 	})
 }
 

@@ -73,8 +73,8 @@ func TestWer(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if !strings.Contains(got, "Zimmer 4") {
-			t.Errorf("got %q, want it to contain %q", got, "Zimmer 4")
+		if !strings.Contains(got.Plain, "Zimmer 4") || !strings.Contains(got.HTML, "<b>Zimmer 4</b>") {
+			t.Errorf("got %+v, want it to name Zimmer 4, in bold in the rich message", got)
 		}
 	})
 
@@ -84,8 +84,19 @@ func TestWer(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if !strings.Contains(got, "keine Planung") {
-			t.Errorf("got %q, want it to contain %q", got, "keine Planung")
+		if !strings.Contains(got.Plain, "keine Planung") || !strings.Contains(got.HTML, "keine Planung") {
+			t.Errorf("got %+v, want it to contain %q", got, "keine Planung")
+		}
+	})
+
+	t.Run("room names are escaped", func(t *testing.T) {
+		q := fakeQuerier{row: fakeRow{room: "<Zimmer & 4>"}}
+		got, err := wer(schedule.DutyTypeToilet1)(context.Background(), q, now)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !strings.Contains(got.HTML, "<b>&lt;Zimmer &amp; 4&gt;</b>") {
+			t.Errorf("got %q, want the room escaped", got.HTML)
 		}
 	})
 
@@ -107,11 +118,15 @@ func TestPlan(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !strings.Contains(got, "Toilette 1") {
-		t.Errorf("got %q, want it to contain the duty label", got)
+	n := schedule.DutyTypeToilet1.PlanCount()
+	if !strings.Contains(got.Plain, "Toilette 1") || !strings.Contains(got.HTML, "<h3>🗓️ Toilette 1") {
+		t.Errorf("got %+v, want the duty label in the title", got)
 	}
-	if strings.Count(got, ": —") != schedule.DutyTypeToilet1.PlanCount() {
-		t.Errorf("got %q, want %d empty-room placeholders", got, schedule.DutyTypeToilet1.PlanCount())
+	if strings.Count(got.Plain, ": —") != n {
+		t.Errorf("plain %q, want %d empty-room placeholders", got.Plain, n)
+	}
+	if strings.Count(got.HTML, "<td>—</td>") != n || strings.Count(got.HTML, "<tr>") != n+1 {
+		t.Errorf("html %q, want a header and %d rows with empty rooms", got.HTML, n)
 	}
 }
 
@@ -149,7 +164,7 @@ func TestStaticReply(t *testing.T) {
 		if ok != tc.wantOK {
 			t.Errorf("StaticReply(%q, private=%v): ok=%v, want %v", tc.cmd, tc.private, ok, tc.wantOK)
 		}
-		if ok && reply == "" {
+		if ok && (reply.Plain == "" || reply.HTML == "") {
 			t.Errorf("StaticReply(%q, private=%v): ok but empty reply", tc.cmd, tc.private)
 		}
 	}
@@ -157,8 +172,11 @@ func TestStaticReply(t *testing.T) {
 
 func TestHelpMessageListsEveryDuty(t *testing.T) {
 	for _, c := range duties {
-		if !strings.Contains(helpMessage, "/"+c.name+" —") {
-			t.Errorf("helpMessage has no entry for /%s", c.name)
+		if !strings.Contains(helpMessage.Plain, "/"+c.name+" —") {
+			t.Errorf("helpMessage.Plain has no entry for /%s", c.name)
+		}
+		if !strings.Contains(helpMessage.HTML, "<td>/"+c.name+"</td>") {
+			t.Errorf("helpMessage.HTML has no cell for /%s", c.name)
 		}
 	}
 }
@@ -192,11 +210,13 @@ func TestMenuValidForTelegram(t *testing.T) {
 // built from pkg/schedule now, so it moves whenever the cadence does.
 func TestHelpAnnouncesTheRealCadence(t *testing.T) {
 	for _, want := range []string{"dienstags, donnerstags und freitags", "gegen 10 Uhr"} {
-		if !strings.Contains(helpMessage, want) {
-			t.Errorf("helpMessage is missing %q:\n%s", want, helpMessage)
+		for _, text := range []string{helpMessage.Plain, helpMessage.HTML} {
+			if !strings.Contains(text, want) {
+				t.Errorf("helpMessage is missing %q:\n%s", want, text)
+			}
 		}
 	}
-	if strings.Contains(helpMessage, "Jeden Donnerstag") {
+	if strings.Contains(helpMessage.Plain, "Jeden Donnerstag") {
 		t.Error("helpMessage still claims the reminder comes only on Thursdays")
 	}
 }
@@ -209,7 +229,7 @@ func TestReminderDaysJoinsGermanStyle(t *testing.T) {
 }
 
 func TestAdminStartReplyListsEveryCommand(t *testing.T) {
-	got := AdminStartReply()
+	got := AdminStartReply().Plain
 	if !strings.HasPrefix(got, startMessage) {
 		t.Errorf("does not open with the greeting:\n%s", got)
 	}

@@ -206,13 +206,13 @@ func TestHandleMessageRouting(t *testing.T) {
 		methods []string
 		contain string
 	}{
-		{"admin /start gets the menu and the command list", private("start"), telegram.StatusCreator, []string{"setMyCommands", "sendMessage"}, "/etage_plan"},
-		{"admin /help", private("help"), telegram.StatusAdministrator, []string{"sendMessage"}, "/etage"},
+		{"admin /start gets the menu and the command list", private("start"), telegram.StatusCreator, []string{"setMyCommands", "sendRichMessage"}, "/etage_plan"},
+		{"admin /help", private("help"), telegram.StatusAdministrator, []string{"sendRichMessage"}, "/etage"},
 		{"member /start is greeted", private("start"), telegram.StatusMember, []string{"sendMessage"}, "Hallo"},
 		{"member commands are ignored", private("help"), telegram.StatusMember, nil, ""},
 		{"stranger commands are ignored", private("etage"), telegram.StatusLeft, nil, ""},
 		{"banned /start is ignored", private("start"), telegram.StatusKicked, nil, ""},
-		{"anyone in the WG group gets /help", inGroup("help"), telegram.StatusMember, []string{"sendMessage"}, "/etage"},
+		{"anyone in the WG group gets /help", inGroup("help"), telegram.StatusMember, []string{"sendRichMessage"}, "/etage"},
 		{"/start in the WG group is ignored", inGroup("start"), telegram.StatusMember, nil, ""},
 		{"another group gets nothing", inOtherGroup("help"), telegram.StatusCreator, nil, ""},
 	}

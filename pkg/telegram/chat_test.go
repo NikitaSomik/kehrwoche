@@ -140,3 +140,21 @@ func TestSetWebhook(t *testing.T) {
 		}
 	}
 }
+
+func TestButtonStyleAndDisabled(t *testing.T) {
+	client, body, path := capturingClient(http.StatusOK, okBody)
+	rows := [][]Button{{
+		{Text: "OK", Data: "approve:1", Style: StyleSuccess},
+		{Text: "Erledigt", Disabled: &DisabledButton{}},
+	}}
+	if err := client.EditKeyboard(context.Background(), 7, 9, rows); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasSuffix(*path, "/editMessageReplyMarkup") {
+		t.Errorf("path %s", *path)
+	}
+	want := `"inline_keyboard":[[{"text":"OK","callback_data":"approve:1","style":"success"},{"text":"Erledigt","disabled":{}}]]`
+	if !strings.Contains(*body, want) || !strings.Contains(*body, `"message_id":9`) {
+		t.Errorf("got %s, want it to contain %s", *body, want)
+	}
+}

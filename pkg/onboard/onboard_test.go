@@ -136,13 +136,16 @@ type fakeBot struct {
 	keyboardErr    error
 	keyboards      int // SendKeyboard calls, delivered or not
 
-	sent     []sent
-	edits    []string
-	answers  []string
-	tags     map[int64]string
-	approved []int64
-	links    int
-	revoked  []string
+	sent    []sent
+	edits   []string
+	retired []string // texts of the disabled buttons a card was left with
+	// refuseDisabled refuses disabled buttons, as an older Bot API would.
+	refuseDisabled bool
+	answers        []string
+	tags           map[int64]string
+	approved       []int64
+	links          int
+	revoked        []string
 	// roles are users' roles in the WG group; adminID is its creator and
 	// anyone missing has left.
 	roles map[int64]telegram.MemberStatus
@@ -189,6 +192,21 @@ func (b *fakeBot) SendKeyboard(_ context.Context, chatID int64, text string, row
 
 func (b *fakeBot) EditText(_ context.Context, _ int64, _ int, text string) error {
 	b.edits = append(b.edits, text)
+	return nil
+}
+
+func (b *fakeBot) EditKeyboard(_ context.Context, _ int64, _ int, rows [][]telegram.Button) error {
+	for _, row := range rows {
+		for _, btn := range row {
+			if btn.Disabled == nil {
+				continue
+			}
+			if b.refuseDisabled {
+				return &telegram.APIError{Method: "editMessageReplyMarkup", Code: 400, Description: "Bad Request: can't parse inline keyboard button"}
+			}
+			b.retired = append(b.retired, btn.Text)
+		}
+	}
 	return nil
 }
 
@@ -444,8 +462,8 @@ func TestCallbackDecision(t *testing.T) {
 		if got := bot.last(); got.chatID != userID || len(got.rows) == 0 {
 			t.Errorf("got %+v", got)
 		}
-		if len(bot.edits) != 1 || !strings.Contains(bot.edits[0], "Angenommen") {
-			t.Errorf("card not retired: %v", bot.edits)
+		if len(bot.retired) != 1 || !strings.Contains(bot.retired[0], "Angenommen") || len(bot.edits) != 0 {
+			t.Errorf("card not retired with a disabled button: retired %v, edits %v", bot.retired, bot.edits)
 		}
 		if len(bot.answers) != 1 {
 			t.Errorf("press answered %d times", len(bot.answers))
@@ -496,8 +514,22 @@ func TestCallbackDecision(t *testing.T) {
 		if db.rows[userID].Status != users.StatusApproved {
 			t.Errorf("status %q", db.rows[userID].Status)
 		}
-		if len(bot.edits) != 1 || !strings.HasSuffix(bot.edits[0], "Angenommen von Lena") {
-			t.Errorf("card %v", bot.edits)
+		if len(bot.retired) != 1 || bot.retired[0] != "✅ Angenommen von Lena" {
+			t.Errorf("card buttons %v", bot.retired)
+		}
+	})
+
+	t.Run("without disabled buttons the verdict goes into the text", func(t *testing.T) {
+		bot := &fakeBot{refuseDisabled: true}
+		db := newDB(map[int64]users.User{userID: {Status: users.StatusPending}})
+		q := press(adminID, adminID, data(actReject))
+		q.From.FirstName = "Lena"
+
+		if err := flow(bot, db).Callback(ctx, q); err != nil {
+			t.Fatal(err)
+		}
+		if len(bot.edits) != 1 || bot.edits[0] != "card\n\n❌ Abgelehnt von Lena" {
+			t.Errorf("edits %q", bot.edits)
 		}
 	})
 

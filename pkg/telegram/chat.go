@@ -7,14 +7,29 @@ import (
 	"time"
 )
 
-// Button is an inline keyboard button; set exactly one of Data and URL. Data
-// (max 64 bytes) comes back in CallbackQuery.Data when it is pressed; URL is
-// opened instead.
+// Button is an inline keyboard button; set exactly one of Data, URL and
+// Disabled. Data (max 64 bytes) comes back in CallbackQuery.Data when it is
+// pressed; URL is opened instead; a Disabled button does nothing (Bot API
+// 10.3). Style colours it (Bot API 9.4); empty leaves the app's default.
 type Button struct {
-	Text string `json:"text"`
-	Data string `json:"callback_data,omitempty"`
-	URL  string `json:"url,omitempty"`
+	Text     string          `json:"text"`
+	Data     string          `json:"callback_data,omitempty"`
+	URL      string          `json:"url,omitempty"`
+	Disabled *DisabledButton `json:"disabled,omitempty"`
+	Style    ButtonStyle     `json:"style,omitempty"`
 }
+
+// DisabledButton marks a Button that does nothing. It holds no information.
+type DisabledButton struct{}
+
+// ButtonStyle is an InlineKeyboardButton's colour.
+type ButtonStyle string
+
+const (
+	StyleSuccess ButtonStyle = "success" // green
+	StyleDanger  ButtonStyle = "danger"  // red
+	StylePrimary ButtonStyle = "primary" // blue
+)
 
 // ProfileURL opens a user's profile by id, with no username needed. Telegram
 // refuses a message carrying it when the user's privacy settings forbid it.
@@ -37,6 +52,15 @@ func (c *Client) EditText(ctx context.Context, chatID int64, messageID int, text
 		"chat_id":    chatID,
 		"message_id": messageID,
 		"text":       text,
+	}, nil)
+}
+
+// EditKeyboard replaces a bot message's inline keyboard and keeps its text.
+func (c *Client) EditKeyboard(ctx context.Context, chatID int64, messageID int, rows [][]Button) error {
+	return c.call(ctx, "editMessageReplyMarkup", map[string]any{
+		"chat_id":      chatID,
+		"message_id":   messageID,
+		"reply_markup": map[string]any{"inline_keyboard": rows},
 	}, nil)
 }
 
