@@ -302,13 +302,6 @@ type OnDutyResult struct {
 	Room string
 }
 
-func (r OnDutyResult) Format(label, window string) string {
-	if r.Room == "" {
-		return fmt.Sprintf("❓ %s (%s): keine Planung.", label, window)
-	}
-	return fmt.Sprintf("🏠 %s (%s): *%s*", label, window, r.Room)
-}
-
 func eventDate(t time.Time, days []time.Weekday, window int) time.Time {
 	t = dateOnly(t)
 	for i := range window {

@@ -134,7 +134,7 @@ func handleMessage(ctx context.Context, cfg config.Config, bot *telegram.Client,
 		if err := bot.SetChatCommands(ctx, botcmd.Menu(), msg.Chat.ID); err != nil {
 			log.Printf("webhook: set chat commands: %v", err)
 		}
-		if err := bot.SendPlain(ctx, msg.Chat.ID, botcmd.AdminStartReply()); err != nil {
+		if err := bot.SendRich(ctx, msg.Chat.ID, botcmd.AdminStartReply()); err != nil {
 			log.Printf("webhook: send admin start: %v", err)
 		}
 	case status.IsAdmin():
@@ -155,7 +155,7 @@ func handleMessage(ctx context.Context, cfg config.Config, bot *telegram.Client,
 		})
 	default: // no ADMIN_CHAT_ID to approve requests: just greet
 		reply, _ := botcmd.StaticReply(botcmd.CmdStart, true)
-		if err := bot.SendPlain(ctx, msg.Chat.ID, reply); err != nil {
+		if err := bot.SendPlain(ctx, msg.Chat.ID, reply.Plain); err != nil {
 			log.Printf("webhook: send start: %v", err)
 		}
 	}
@@ -163,7 +163,7 @@ func handleMessage(ctx context.Context, cfg config.Config, bot *telegram.Client,
 
 func answerCommand(ctx context.Context, cfg config.Config, bot *telegram.Client, msg *telegram.Message, cmd string) {
 	if reply, ok := botcmd.StaticReply(cmd, msg.Chat.IsPrivate()); ok {
-		if err := bot.SendPlain(ctx, msg.Chat.ID, reply); err != nil {
+		if err := bot.SendRich(ctx, msg.Chat.ID, reply); err != nil {
 			log.Printf("webhook: send static: %v", err)
 		}
 		return
@@ -190,12 +190,12 @@ func answerCommand(ctx context.Context, cfg config.Config, bot *telegram.Client,
 		log.Printf("webhook: load location: %v", err)
 		return
 	}
-	text, err := handle(ctx, conn, time.Now().In(loc))
+	reply, err := handle(ctx, conn, time.Now().In(loc))
 	if err != nil {
 		log.Printf("webhook: command: %v", err)
 		return
 	}
-	if err := bot.Send(ctx, msg.Chat.ID, text); err != nil {
+	if err := bot.SendRich(ctx, msg.Chat.ID, reply); err != nil {
 		log.Printf("webhook: send: %v", err)
 	}
 }

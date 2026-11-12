@@ -139,26 +139,6 @@ func TestDutyTypePlanCount(t *testing.T) {
 	}
 }
 
-func TestOnDutyResultFormat(t *testing.T) {
-	cases := []struct {
-		name   string
-		result OnDutyResult
-		label  string
-		window string
-		want   string
-	}{
-		{"room assigned", OnDutyResult{Room: "Zimmer 1"}, "Toilette", "19.06 – 21.06", "🏠 Toilette (19.06 – 21.06): *Zimmer 1*"},
-		{"no plan", OnDutyResult{}, "Treppenhaus", "26.06 – 28.06", "❓ Treppenhaus (26.06 – 28.06): keine Planung."},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			if got := tc.result.Format(tc.label, tc.window); got != tc.want {
-				t.Errorf("got %q, want %q", got, tc.want)
-			}
-		})
-	}
-}
-
 func TestCleaningWindow(t *testing.T) {
 	cases := []struct {
 		name string

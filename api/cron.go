@@ -45,7 +45,7 @@ func dutiesFor(weekday time.Weekday) []schedule.DutyType {
 // notifier is the part of the Bot API a cron run uses; *telegram.Client
 // satisfies it.
 type notifier interface {
-	Send(ctx context.Context, chatID int64, text string) error
+	SendRich(ctx context.Context, chatID int64, m telegram.Rich) error
 	SendPlain(ctx context.Context, chatID int64, text string) error
 }
 
@@ -158,7 +158,8 @@ func (c cronRun) remind(ctx context.Context, now time.Time) []string {
 		}
 	}()
 
-	var lines, problems []string
+	var rows [][]string
+	var problems []string
 	for _, dutyType := range duties {
 		result, err := schedule.GetOnDuty(ctx, conn, dutyType, now)
 		if err != nil {
@@ -170,19 +171,31 @@ func (c cronRun) remind(ctx context.Context, now time.Time) []string {
 		if room == "" {
 			room = "—"
 		}
-		lines = append(lines, fmt.Sprintf("*%s*: %s", dutyType.Label(), room))
+		rows = append(rows, []string{dutyType.Label(), room})
 	}
 
-	if len(lines) > 0 {
-		window := duties[0].Window(now)
-		text := fmt.Sprintf("🏠 *Erinnerung — %s*\n\n%s", window, strings.Join(lines, "\n"))
-		if err := c.bot.Send(ctx, c.cfg.ChatID, text); err != nil {
+	if len(rows) > 0 {
+		if err := c.bot.SendRich(ctx, c.cfg.ChatID, reminder(duties[0].Window(now), rows)); err != nil {
 			log.Printf("cron: send: %v", err)
 			problems = append(problems, fmt.Sprintf("Erinnerung nicht zustellbar: %v", err))
 		}
 	}
 
 	return append(problems, c.horizonProblems(ctx, conn, now)...)
+}
+
+// reminder renders the duties and their rooms as a table under a heading,
+// with a plain copy of one "duty: room" line each.
+func reminder(window string, rows [][]string) telegram.Rich {
+	title := "🏠 Erinnerung — " + window
+	lines := make([]string, len(rows))
+	for i, r := range rows {
+		lines[i] = r[0] + ": " + r[1]
+	}
+	return telegram.Rich{
+		HTML:  "<h3>" + telegram.Esc(title) + "</h3>" + telegram.HTMLTable([]string{"Aufgabe", "Zimmer"}, rows),
+		Plain: title + "\n\n" + strings.Join(lines, "\n"),
+	}
 }
 
 // reportProblems reports a cron run that could not do its job to ADMIN_CHAT_ID,

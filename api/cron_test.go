@@ -274,9 +274,9 @@ func berlinTime(t *testing.T, year int, month time.Month, day, hour, minute int)
 }
 
 type sentMsg struct {
-	chatID   int64
-	text     string
-	markdown bool
+	chatID int64
+	text   string
+	rich   bool
 }
 
 // fakeNotifier records what a run would have sent, and fails every send with
@@ -286,8 +286,8 @@ type fakeNotifier struct {
 	err  error
 }
 
-func (n *fakeNotifier) Send(_ context.Context, chatID int64, text string) error {
-	return n.record(sentMsg{chatID: chatID, text: text, markdown: true})
+func (n *fakeNotifier) SendRich(_ context.Context, chatID int64, m telegram.Rich) error {
+	return n.record(sentMsg{chatID: chatID, text: m.HTML, rich: true})
 }
 
 func (n *fakeNotifier) SendPlain(_ context.Context, chatID int64, text string) error {
@@ -317,7 +317,7 @@ func TestReportProblems(t *testing.T) {
 		if len(bot.sent) != 1 {
 			t.Fatalf("got %d messages, want 1 covering both problems", len(bot.sent))
 		}
-		if m := bot.sent[0]; m.chatID != 456 || m.markdown {
+		if m := bot.sent[0]; m.chatID != 456 || m.rich {
 			t.Errorf("got %+v, want plain text to the admin chat", m)
 		}
 		for _, want := range []string{"Etage: Plan nicht lesbar", "Erinnerung nicht zustellbar"} {
