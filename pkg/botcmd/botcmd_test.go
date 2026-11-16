@@ -119,14 +119,17 @@ func TestPlan(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	n := schedule.DutyTypeToilet1.PlanCount()
-	if !strings.Contains(got.Plain, "Toilette 1") || !strings.Contains(got.HTML, "<h3>🗓️ Toilette 1") {
+	if !strings.Contains(got.Plain, "Toilette 1") || !strings.Contains(got.HTML, "<h4>🚽 Toilette 1") {
 		t.Errorf("got %+v, want the duty label in the title", got)
 	}
 	if strings.Count(got.Plain, ": —") != n {
 		t.Errorf("plain %q, want %d empty-room placeholders", got.Plain, n)
 	}
-	if strings.Count(got.HTML, "<td>—</td>") != n || strings.Count(got.HTML, "<tr>") != n+1 {
+	if strings.Count(got.HTML, "<td>—</td>") != n-1 || strings.Count(got.HTML, "<tr>") != n+1 {
 		t.Errorf("html %q, want a header and %d rows with empty rooms", got.HTML, n)
+	}
+	if !strings.Contains(got.HTML, "<tr><td><b>19.06 – 21.06</b></td><td><b>—</b></td></tr>") {
+		t.Errorf("html %q, want the current week in bold", got.HTML)
 	}
 }
 

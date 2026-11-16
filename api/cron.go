@@ -171,7 +171,7 @@ func (c cronRun) remind(ctx context.Context, now time.Time) []string {
 		if room == "" {
 			room = "—"
 		}
-		rows = append(rows, []string{dutyType.Label(), room})
+		rows = append(rows, []string{dutyType.Title(), room})
 	}
 
 	if len(rows) > 0 {
@@ -187,13 +187,13 @@ func (c cronRun) remind(ctx context.Context, now time.Time) []string {
 // reminder renders the duties and their rooms as a table under a heading,
 // with a plain copy of one "duty: room" line each.
 func reminder(window string, rows [][]string) telegram.Rich {
-	title := "🏠 Erinnerung — " + window
+	title := "🔔 Erinnerung · " + window
 	lines := make([]string, len(rows))
 	for i, r := range rows {
 		lines[i] = r[0] + ": " + r[1]
 	}
 	return telegram.Rich{
-		HTML:  "<h3>" + telegram.Esc(title) + "</h3>" + telegram.HTMLTable([]string{"Aufgabe", "Zimmer"}, rows),
+		HTML:  "<h4>" + telegram.Esc(title) + "</h4>" + telegram.HTMLTable([]string{"Aufgabe", "Zimmer"}, rows, telegram.NoHighlight),
 		Plain: title + "\n\n" + strings.Join(lines, "\n"),
 	}
 }
