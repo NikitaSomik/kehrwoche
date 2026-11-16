@@ -22,7 +22,7 @@ func TestDutyTypeLabel(t *testing.T) {
 	}{
 		{DutyTypeToilet1, "Toilette 1"},
 		{DutyTypeToilet2, "Toilette 2"},
-		{DutyTypeHall, "Treppenhaus"},
+		{DutyTypeHall, "Flur"},
 		{DutyTypeFloor, "Etage"},
 		{DutyTypeLaundry, "Waschküche"},
 		{DutyType("unknown"), "unknown"},
@@ -188,7 +188,7 @@ func TestReminderWeekdays(t *testing.T) {
 
 func TestIsBlockAndHorizonDuties(t *testing.T) {
 	if !IsBlock(DutyTypeHall) {
-		t.Error("Treppenhaus is planned in blocks, not on a rolling horizon")
+		t.Error("Flur is planned in blocks, not on a rolling horizon")
 	}
 	for _, d := range []DutyType{DutyTypeToilet1, DutyTypeToilet2, DutyTypeFloor, DutyTypeLaundry} {
 		if IsBlock(d) {
@@ -197,14 +197,14 @@ func TestIsBlockAndHorizonDuties(t *testing.T) {
 	}
 
 	// Every duty but the staircase — a gap in the others is a real shortage,
-	// a gap in Treppenhaus is another floor's turn.
+	// a gap in Flur is another floor's turn.
 	got := HorizonDuties()
 	if len(got) != len(AllDutyTypes())-1 {
 		t.Fatalf("got %d duties, want %d", len(got), len(AllDutyTypes())-1)
 	}
 	for _, d := range got {
 		if d == DutyTypeHall {
-			t.Error("HorizonDuties must not include Treppenhaus")
+			t.Error("HorizonDuties must not include Flur")
 		}
 	}
 }

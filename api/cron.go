@@ -193,7 +193,7 @@ func reminder(window string, rows [][]string) telegram.Rich {
 		lines[i] = r[0] + ": " + r[1]
 	}
 	return telegram.Rich{
-		HTML:  "<h4>" + telegram.Esc(title) + "</h4>" + telegram.HTMLTable([]string{"Aufgabe", "Zimmer"}, rows, telegram.NoHighlight),
+		HTML:  telegram.Title(title) + telegram.HTMLTable(nil, rows, telegram.NoHighlight),
 		Plain: title + "\n\n" + strings.Join(lines, "\n"),
 	}
 }

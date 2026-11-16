@@ -35,7 +35,7 @@ type duty struct {
 var duties = []duty{
 	{"toilette1", schedule.DutyTypeToilet1, "die Toilette 1"},
 	{"toilette2", schedule.DutyTypeToilet2, "die Toilette 2"},
-	{"treppenhaus", schedule.DutyTypeHall, "das Treppenhaus"},
+	{"flur", schedule.DutyTypeHall, "den Flur"},
 	{"etage", schedule.DutyTypeFloor, "die Etage"},
 	{"waschkueche", schedule.DutyTypeLaundry, "die Waschküche"},
 }
@@ -72,9 +72,20 @@ var handlers = func() map[string]Handler {
 	return m
 }()
 
+// renamed maps a duty command's old name to its current one, so the old name
+// still answers when typed by hand or tapped in an old message. It stays out
+// of the menu and /help.
+var renamed = map[string]string{
+	"treppenhaus":      "flur",
+	"treppenhaus_plan": "flur_plan",
+}
+
 // Lookup returns the handler for a duty command, or ok=false for anything not
 // in the list (the webhook then stays silent).
 func Lookup(name string) (Handler, bool) {
+	if current, ok := renamed[name]; ok {
+		name = current
+	}
 	h, ok := handlers[name]
 	return h, ok
 }
@@ -122,7 +133,7 @@ func buildHelpMessage() telegram.Rich {
 		reminderDays(), schedule.ReminderHour)
 	plain.WriteString("\n" + cadence)
 
-	html := "<h4>🧽 " + telegram.Esc(helpTitle) + "</h4>" +
+	html := telegram.Title("🧽 "+helpTitle) +
 		"<p>" + telegram.Esc(helpLead) + " Tippe auf einen Befehl.</p>" +
 		telegram.HTMLTable([]string{"Bereich", "Diese Woche", fmt.Sprintf("%d Wochen", schedule.PlanWeeks)}, rows, telegram.NoHighlight) +
 		"<footer>🔔 " + telegram.Esc(cadence) + "</footer>"
@@ -225,7 +236,7 @@ func plan(dutyType schedule.DutyType) Handler {
 		}
 		title := fmt.Sprintf("%s · nächste %d Wochen", dutyType.Title(), schedule.PlanWeeks)
 		return telegram.Rich{
-			HTML:  "<h4>" + telegram.Esc(title) + "</h4>" + telegram.HTMLTable([]string{"Zeitraum", "Zimmer"}, rows, 0),
+			HTML:  telegram.Title(title) + telegram.HTMLTable(nil, rows, 0),
 			Plain: title + ":\n\n" + strings.Join(lines, "\n"),
 		}, nil
 	}

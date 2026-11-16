@@ -213,7 +213,7 @@ func TestSelectedDuties(t *testing.T) {
 	})
 }
 
-// Treppenhaus comes back to our floor as a whole block: one week per occupied
+// Flur comes back to our floor as a whole block: one week per occupied
 // room, in order, starting again from the first room every time. So the cases
 // that matter are the length of the block and the fact that it never carries
 // on from where the previous block stopped.
@@ -594,7 +594,7 @@ func TestPrintDeletions(t *testing.T) {
 		lines := strings.Split(strings.TrimRight(out.String(), "\n"), "\n")
 		want := []string{
 			"▲  -regen deletes 8 existing rows first",
-			"│  Treppenhaus     8  2026-11-06 … 2026-12-25",
+			"│  Flur     8  2026-11-06 … 2026-12-25",
 			"│",
 		}
 		if !slices.Equal(lines, want) {
