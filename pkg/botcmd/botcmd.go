@@ -107,7 +107,7 @@ var helpMessage = buildHelpMessage()
 
 func buildHelpMessage() telegram.Rich {
 	var plain strings.Builder
-	plain.WriteString(helpTitle + "\n")
+	plain.WriteString(helpTitle + " – " + helpLead + "\n")
 	var rows [][]string
 	for i, c := range commands {
 		if i%2 == 0 { // a duty's first command opens its group
@@ -116,19 +116,23 @@ func buildHelpMessage() telegram.Rich {
 		fmt.Fprintf(&plain, "/%s — %s\n", c.name, c.desc)
 	}
 	for _, d := range duties {
-		rows = append(rows, []string{d.typ.Label(), "/" + d.name, "/" + d.planName()})
+		rows = append(rows, []string{d.typ.Title(), "/" + d.name, "/" + d.planName()})
 	}
 	cadence := fmt.Sprintf("Der Bot meldet sich hier automatisch %s gegen %d Uhr.",
 		reminderDays(), schedule.ReminderHour)
 	plain.WriteString("\n" + cadence)
 
-	html := "<h3>" + telegram.Esc(helpTitle) + "</h3>" +
-		telegram.HTMLTable([]string{"Bereich", "Diese Woche", fmt.Sprintf("Nächste %d Wochen", schedule.PlanWeeks)}, rows) +
-		"<p>" + telegram.Esc(cadence) + "</p>"
+	html := "<h4>🧽 " + telegram.Esc(helpTitle) + "</h4>" +
+		"<p>" + telegram.Esc(helpLead) + " Tippe auf einen Befehl.</p>" +
+		telegram.HTMLTable([]string{"Bereich", "Diese Woche", fmt.Sprintf("%d Wochen", schedule.PlanWeeks)}, rows, telegram.NoHighlight) +
+		"<footer>🔔 " + telegram.Esc(cadence) + "</footer>"
 	return telegram.Rich{HTML: html, Plain: plain.String()}
 }
 
-const helpTitle = "Kehrwoche-Bot – wer ist diese Woche mit Putzen dran?"
+const (
+	helpTitle = "Kehrwoche-Bot"
+	helpLead  = "Wer ist diese Woche mit Putzen dran?"
+)
 
 // reminderDays renders the announcement weekdays as German prose, e.g.
 // "dienstags, donnerstags und freitags". Built from schedule.ReminderWeekdays
@@ -188,19 +192,20 @@ func wer(dutyType schedule.DutyType) Handler {
 		if err != nil {
 			return telegram.Rich{}, err
 		}
-		head := fmt.Sprintf("%s (%s)", dutyType.Label(), dutyType.Window(now))
+		head := fmt.Sprintf("%s (%s)", dutyType.Title(), dutyType.Window(now))
 		if result.Room == "" {
-			text := "❓ " + head + ": keine Planung."
+			text := head + ": keine Planung ❓"
 			return telegram.Rich{HTML: "<p>" + telegram.Esc(text) + "</p>", Plain: text}, nil
 		}
 		return telegram.Rich{
-			HTML:  "<p>🏠 " + telegram.Esc(head) + ": <b>" + telegram.Esc(result.Room) + "</b></p>",
-			Plain: "🏠 " + head + ": " + result.Room,
+			HTML:  "<p>" + telegram.Esc(head) + ": <b>" + telegram.Esc(result.Room) + "</b></p>",
+			Plain: head + ": " + result.Room,
 		}, nil
 	}
 }
 
-// plan answers the coming weeks as a table: window, room.
+// plan answers the coming weeks as a table: window, room. The first row, the
+// assignment that is current or comes next, is in bold.
 func plan(dutyType schedule.DutyType) Handler {
 	return func(ctx context.Context, conn schedule.Querier, now time.Time) (telegram.Rich, error) {
 		entries, err := schedule.GetUpcoming(ctx, conn, dutyType, now, dutyType.PlanCount())
@@ -218,9 +223,9 @@ func plan(dutyType schedule.DutyType) Handler {
 			rows[i] = []string{window, room}
 			lines[i] = window + ": " + room
 		}
-		title := fmt.Sprintf("🗓️ %s — nächste %d Wochen", dutyType.Label(), schedule.PlanWeeks)
+		title := fmt.Sprintf("%s · nächste %d Wochen", dutyType.Title(), schedule.PlanWeeks)
 		return telegram.Rich{
-			HTML:  "<h3>" + telegram.Esc(title) + "</h3>" + telegram.HTMLTable([]string{"Zeitraum", "Zimmer"}, rows),
+			HTML:  "<h4>" + telegram.Esc(title) + "</h4>" + telegram.HTMLTable([]string{"Zeitraum", "Zimmer"}, rows, 0),
 			Plain: title + ":\n\n" + strings.Join(lines, "\n"),
 		}, nil
 	}

@@ -163,6 +163,27 @@ func (d DutyType) Label() string {
 	}
 }
 
+// Icon is the duty's emoji, shown before its label in the bot's messages.
+func (d DutyType) Icon() string {
+	switch d {
+	case DutyTypeToilet1, DutyTypeToilet2:
+		return "🚽"
+	case DutyTypeHall:
+		return "🪜"
+	case DutyTypeFloor:
+		return "🧹"
+	case DutyTypeLaundry:
+		return "🧺"
+	default:
+		return "🏠"
+	}
+}
+
+// Title is the icon and the label, e.g. "🧹 Etage".
+func (d DutyType) Title() string {
+	return d.Icon() + " " + d.Label()
+}
+
 type Entry struct {
 	Date time.Time
 	Room string

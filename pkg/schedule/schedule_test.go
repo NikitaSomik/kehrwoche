@@ -249,3 +249,14 @@ func TestWeeklyDuties(t *testing.T) {
 		t.Errorf("got %v, want %v", got, want)
 	}
 }
+
+func TestEveryDutyHasItsOwnIcon(t *testing.T) {
+	for _, d := range AllDutyTypes() {
+		if d.Icon() == "🏠" {
+			t.Errorf("%s has no icon of its own", d)
+		}
+		if got, want := d.Title(), d.Icon()+" "+d.Label(); got != want {
+			t.Errorf("%s: Title %q, want %q", d, got, want)
+		}
+	}
+}

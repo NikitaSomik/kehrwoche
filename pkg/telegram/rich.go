@@ -46,18 +46,28 @@ func Esc(s string) string {
 	return html.EscapeString(s)
 }
 
-// HTMLTable renders a table with a header row; every cell is escaped.
-func HTMLTable(header []string, rows [][]string) string {
+// NoHighlight is HTMLTable's highlight for a table with no row in bold.
+const NoHighlight = -1
+
+// HTMLTable renders a compact, striped table with a header row; every cell is
+// escaped. Telegram's default cell padding makes a short table fill the
+// screen, hence compact. The row at index highlight is set in bold, e.g. the
+// current week of a plan; NoHighlight sets none.
+func HTMLTable(header []string, rows [][]string, highlight int) string {
 	var b strings.Builder
-	b.WriteString("<table><tr>")
+	b.WriteString("<table compact striped><tr>")
 	for _, h := range header {
 		b.WriteString("<th>" + Esc(h) + "</th>")
 	}
 	b.WriteString("</tr>")
-	for _, row := range rows {
+	for i, row := range rows {
 		b.WriteString("<tr>")
 		for _, cell := range row {
-			b.WriteString("<td>" + Esc(cell) + "</td>")
+			if i == highlight {
+				b.WriteString("<td><b>" + Esc(cell) + "</b></td>")
+			} else {
+				b.WriteString("<td>" + Esc(cell) + "</td>")
+			}
 		}
 		b.WriteString("</tr>")
 	}

@@ -66,10 +66,19 @@ func TestSendRich(t *testing.T) {
 	})
 }
 
-func TestHTMLTableEscapes(t *testing.T) {
-	got := HTMLTable([]string{"A&B"}, [][]string{{"<x>"}})
-	want := "<table><tr><th>A&amp;B</th></tr><tr><td>&lt;x&gt;</td></tr></table>"
-	if got != want {
-		t.Errorf("got %q, want %q", got, want)
-	}
+func TestHTMLTable(t *testing.T) {
+	t.Run("escapes cells", func(t *testing.T) {
+		got := HTMLTable([]string{"A&B"}, [][]string{{"<x>"}}, NoHighlight)
+		want := "<table compact striped><tr><th>A&amp;B</th></tr><tr><td>&lt;x&gt;</td></tr></table>"
+		if got != want {
+			t.Errorf("got %q, want %q", got, want)
+		}
+	})
+	t.Run("bolds the highlighted row", func(t *testing.T) {
+		got := HTMLTable([]string{"A"}, [][]string{{"1"}, {"2"}}, 1)
+		want := "<table compact striped><tr><th>A</th></tr><tr><td>1</td></tr><tr><td><b>2</b></td></tr></table>"
+		if got != want {
+			t.Errorf("got %q, want %q", got, want)
+		}
+	})
 }
