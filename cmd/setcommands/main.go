@@ -3,12 +3,9 @@
 // scopes (default, all group chats, all chat administrators), so strangers see
 // nothing but /start. Telegram's Start button shows only in a fresh chat, so
 // the private menu keeps /start one tap away for someone who wrote before.
-// Group admins get the full menu in their own private chat (a chat scope that
-// overrides the private one): api/webhook.go sets it when they send /start,
-// and this refreshes it for every current admin, so a renamed command leaves
-// no stale menu behind. An admin who never wrote to the bot has no private
-// chat with it yet; they are listed as skipped. It hits the Telegram API — run
-// it by hand.
+// Group admins get the full menu in their own private chat when they send
+// /start (api/webhook.go), a chat scope that overrides the private one. It hits
+// the Telegram API — run it by hand.
 //
 //	task setcommands           # menu for the group, /start in private, none elsewhere
 //	task setcommands -- -show   # print Telegram's current menus, change nothing
@@ -16,7 +13,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -99,45 +95,7 @@ func run(ctx context.Context, show bool) error {
 		names = append(names, scopeName(s))
 	}
 	fmt.Printf("pushed %d commands to the group %d\n", len(cmds), groupID)
-	fmt.Println("private chats: /start only")
+	fmt.Println("private chats: /start only; group admins get the full menu there with /start")
 	fmt.Printf("removed the menu from: %s\n", strings.Join(names, ", "))
-	return refreshAdmins(ctx, bot, groupID, cmds)
-}
-
-// refreshAdmins sets the full menu in each group admin's private chat. A chat
-// Telegram refuses (the admin never started the bot, or blocked it) is
-// skipped: their next /start sets it.
-func refreshAdmins(ctx context.Context, bot *telegram.Client, groupID int64, cmds []telegram.Command) error {
-	admins, err := bot.GetAdministrators(ctx, groupID)
-	if err != nil {
-		return fmt.Errorf("group admins: %w", err)
-	}
-	var done, skipped []string
-	for _, a := range admins {
-		name := a.Name()
-		if name == "" {
-			name = fmt.Sprint(a.ID)
-		}
-		err := bot.SetChatCommands(ctx, cmds, a.ID)
-		if _, refused := errors.AsType[*telegram.APIError](err); refused {
-			skipped = append(skipped, name)
-			continue
-		}
-		if err != nil {
-			return fmt.Errorf("admin %s: %w", name, err)
-		}
-		done = append(done, name)
-	}
-	fmt.Printf("full menu in private for the admins: %s\n", listOrNone(done))
-	if len(skipped) > 0 {
-		fmt.Printf("skipped (no private chat with the bot yet; their /start sets it): %s\n", strings.Join(skipped, ", "))
-	}
 	return nil
-}
-
-func listOrNone(names []string) string {
-	if len(names) == 0 {
-		return "none"
-	}
-	return strings.Join(names, ", ")
 }

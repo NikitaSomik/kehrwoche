@@ -106,23 +106,6 @@ func (c *Client) GetMemberStatus(ctx context.Context, chatID, userID int64) (Mem
 	return m.Role(), nil
 }
 
-// GetAdministrators lists a chat's administrators, its creator included
-// (getChatAdministrators). Bots are left out unless Telegram is asked for them,
-// which this does not do.
-func (c *Client) GetAdministrators(ctx context.Context, chatID int64) ([]User, error) {
-	var members []ChatMember
-	if err := c.call(ctx, "getChatAdministrators", map[string]any{"chat_id": chatID}, &members); err != nil {
-		return nil, err
-	}
-	out := make([]User, 0, len(members))
-	for _, m := range members {
-		if m.User != nil && !m.User.IsBot {
-			out = append(out, *m.User)
-		}
-	}
-	return out, nil
-}
-
 // SetMemberTag sets a regular member's tag (Bot API 9.5): 0-16 characters,
 // no emoji. Needs can_manage_tags.
 func (c *Client) SetMemberTag(ctx context.Context, chatID, userID int64, tag string) error {
