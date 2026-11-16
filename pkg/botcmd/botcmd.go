@@ -11,6 +11,7 @@ package botcmd
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -215,29 +216,35 @@ func wer(dutyType schedule.DutyType) Handler {
 	}
 }
 
-// plan answers the coming weeks as a table: window, room. The first row, the
-// assignment that is current or comes next, is in bold.
+// plan answers the coming weeks as a quoted list of "window · room". The first
+// line, the assignment that is current or comes next, is in bold and marked
+// "jetzt" or "als Nächstes".
 func plan(dutyType schedule.DutyType) Handler {
 	return func(ctx context.Context, conn schedule.Querier, now time.Time) (telegram.Rich, error) {
 		entries, err := schedule.GetUpcoming(ctx, conn, dutyType, now, dutyType.PlanCount())
 		if err != nil {
 			return telegram.Rich{}, err
 		}
-		rows := make([][]string, len(entries))
 		lines := make([]string, len(entries))
 		for i, e := range entries {
 			room := e.Room
 			if room == "" {
 				room = "—"
 			}
-			window := dutyType.Window(e.Date)
-			rows[i] = []string{window, room}
-			lines[i] = window + ": " + room
+			lines[i] = dutyType.Window(e.Date) + " · " + room
 		}
 		title := fmt.Sprintf("%s · nächste %d Wochen", dutyType.Title(), schedule.PlanWeeks)
+		note := "als Nächstes"
+		if len(entries) > 0 && !entries[0].Date.After(now) {
+			note = "jetzt"
+		}
+		plain := slices.Clone(lines)
+		if len(plain) > 0 {
+			plain[0] += " ← " + note
+		}
 		return telegram.Rich{
-			HTML:  telegram.Title(title) + telegram.HTMLTable(nil, rows, 0),
-			Plain: title + ":\n\n" + strings.Join(lines, "\n"),
+			HTML:  telegram.Title(title) + telegram.QuoteLines(lines, 0, note),
+			Plain: title + "\n\n" + strings.Join(plain, "\n"),
 		}, nil
 	}
 }

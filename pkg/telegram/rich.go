@@ -47,6 +47,23 @@ func Title(text string) string {
 	return "<p><b>" + Esc(text) + "</b></p>"
 }
 
+// QuoteLines renders lines as one quote block, a line each: a short list of
+// "date · room" pairs reads better as a quote card than as a table, which
+// Telegram stretches to the full width with wide gaps between the columns.
+// Every line is escaped. The line at index highlight is set in bold and
+// followed by " ← note"; NoHighlight sets none.
+func QuoteLines(lines []string, highlight int, note string) string {
+	out := make([]string, len(lines))
+	for i, l := range lines {
+		if i == highlight {
+			out[i] = "<b>" + Esc(l) + "</b> ← " + Esc(note)
+		} else {
+			out[i] = Esc(l)
+		}
+	}
+	return "<blockquote>" + strings.Join(out, "<br>") + "</blockquote>"
+}
+
 // Esc escapes text for a rich message's html.
 func Esc(s string) string {
 	return html.EscapeString(s)

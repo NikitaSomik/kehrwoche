@@ -122,14 +122,27 @@ func TestPlan(t *testing.T) {
 	if !strings.Contains(got.Plain, "Toilette 1") || !strings.Contains(got.HTML, "<p><b>🚽 Toilette 1") {
 		t.Errorf("got %+v, want the duty label in the title", got)
 	}
-	if strings.Count(got.Plain, ": —") != n {
+	if strings.Count(got.Plain, " · —") != n {
 		t.Errorf("plain %q, want %d empty-room placeholders", got.Plain, n)
 	}
-	if strings.Count(got.HTML, "<td>—</td>") != n-1 || strings.Count(got.HTML, "<tr>") != n || strings.Contains(got.HTML, "<th") {
-		t.Errorf("html %q, want %d rows with empty rooms and no header", got.HTML, n)
+	if strings.Count(got.HTML, "<br>") != n-1 || strings.Count(got.HTML, "<blockquote>") != 1 {
+		t.Errorf("html %q, want %d lines in one quote", got.HTML, n)
 	}
-	if !strings.Contains(got.HTML, "<tr><td><b>19.06 – 21.06</b></td><td><b>—</b></td></tr>") {
-		t.Errorf("html %q, want the current week in bold", got.HTML)
+	// Thursday: the Friday-to-Sunday window is still ahead.
+	if !strings.Contains(got.HTML, "<blockquote><b>19.06 – 21.06 · —</b> ← als Nächstes<br>") {
+		t.Errorf("html %q, want the next week in bold, marked as next", got.HTML)
+	}
+
+	// Friday: the window starts today, so it is the current one. (From
+	// Saturday on, a plan leads with the next week: GetUpcoming never shows a
+	// day already past.)
+	fri, _ := time.Parse("2006-01-02", "2026-06-19")
+	got, err = plan(schedule.DutyTypeToilet1)(context.Background(), q, fri)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(got.HTML, "<b>19.06 – 21.06 · —</b> ← jetzt") || !strings.Contains(got.Plain, "19.06 – 21.06 · — ← jetzt") {
+		t.Errorf("got %+v, want the running week marked jetzt", got)
 	}
 }
 
