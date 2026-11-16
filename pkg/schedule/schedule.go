@@ -75,7 +75,7 @@ func dutyKeys() string {
 }
 
 // IsBlock reports whether a duty is planned one complete block at a time
-// rather than on a rolling horizon. Treppenhaus is: the staircase rotates
+// rather than on a rolling horizon. Flur (the house's hall and staircase) is: the staircase rotates
 // between the floors of the house, so our weeks arrive as a block on dates the
 // house sets, and the stretches with no rows in between are the other floors'
 // turns rather than holes in the plan. Anything that assumes a continuous
@@ -153,7 +153,7 @@ func (d DutyType) Label() string {
 	case DutyTypeToilet2:
 		return "Toilette 2"
 	case DutyTypeHall:
-		return "Treppenhaus"
+		return "Flur"
 	case DutyTypeFloor:
 		return "Etage"
 	case DutyTypeLaundry:
@@ -169,7 +169,7 @@ func (d DutyType) Icon() string {
 	case DutyTypeToilet1, DutyTypeToilet2:
 		return "🚽"
 	case DutyTypeHall:
-		return "🪜"
+		return "🚪"
 	case DutyTypeFloor:
 		return "🧹"
 	case DutyTypeLaundry:

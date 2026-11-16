@@ -40,11 +40,11 @@ flag never guarded against the mistake that actually costs something, a
 it reaches; a count and a span do. This is for every `-regen`, a move-out among
 the in-flat duties included, not only for the staircase.
 
-Treppenhaus is the exception to the exception, because `-regen` is the only
+Flur is the exception to the exception, because `-regen` is the only
 mode it has — see below. It also cannot share a run: `-regen` would delete the
 other duties' rows from `-start` too, behind a plan that looked perfectly
-ordinary. So the list holds it apart — picking Treppenhaus clears the in-flat
-duties, and picking any of them clears Treppenhaus — and choosing it supplies
+ordinary. So the list holds it apart — picking Flur clears the in-flat
+duties, and picking any of them clears Flur — and choosing it supplies
 the flag it can't do without.
 
 ```bash
@@ -63,7 +63,7 @@ messages that chat privately when one is within `schedule.HorizonWeeks` of
 running out. Unset, the notice is simply skipped — it never falls back to the
 group chat, since only whoever runs `cmd/seed` can act on it.
 
-## Treppenhaus
+## Flur
 
 The staircase rotates between the floors of the house. When our turn comes
 round, each occupied room takes one week in order, and once they have all had

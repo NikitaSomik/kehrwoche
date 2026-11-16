@@ -47,7 +47,7 @@ func TestRichMessagesReachAdmin(t *testing.T) {
 	messages := map[string]telegram.Rich{
 		"/help": help,
 		"reminder": reminder("Fr 14.11 – So 16.11", [][]string{
-			{"Etage", "Zimmer 3"}, {"Toilette 1", "Zimmer 5"}, {"Toilette 2", "—"}, {"Treppenhaus", "Zimmer 1"},
+			{"Etage", "Zimmer 3"}, {"Toilette 1", "Zimmer 5"}, {"Toilette 2", "—"}, {"Flur", "Zimmer 1"},
 		}),
 	}
 	for name, m := range messages {

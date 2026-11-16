@@ -2,7 +2,7 @@
 // to DATABASE_URL. It's a local dev tool, not a Vercel function.
 //
 // The four in-flat duties (toilet1, toilet2, Etage, Waschküche) run on our own
-// weekly cycle, so they're seeded together for months ahead. Treppenhaus is
+// weekly cycle, so they're seeded together for months ahead. Flur is
 // different: whose turn it is on the staircase is decided per floor by the
 // house, not by us, so it's only ever seeded explicitly with -duty hall, one
 // block at a time, once the date of our next turn is known. A block is one
@@ -71,7 +71,7 @@ func generatable() []schedule.DutyType {
 }
 
 // defaultDuties is what runs when -duty is omitted: everything generatable
-// that isn't a block duty (schedule.IsBlock). Treppenhaus is left out on purpose — its weeks are
+// that isn't a block duty (schedule.IsBlock). Flur is left out on purpose — its weeks are
 // handed to us by the house a block at a time, so extending it by the same
 // horizon as the rest would invent dates we don't own. It has to be asked for
 // by name.

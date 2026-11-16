@@ -41,6 +41,12 @@ func richRefused(err error) bool {
 	return ok && (apiErr.Code == http.StatusBadRequest || apiErr.Code == http.StatusNotFound)
 }
 
+// Title renders a message's title as a bold line: a heading tag renders in a
+// large serif face that dwarfs the short messages it heads.
+func Title(text string) string {
+	return "<p><b>" + Esc(text) + "</b></p>"
+}
+
 // Esc escapes text for a rich message's html.
 func Esc(s string) string {
 	return html.EscapeString(s)
@@ -49,17 +55,22 @@ func Esc(s string) string {
 // NoHighlight is HTMLTable's highlight for a table with no row in bold.
 const NoHighlight = -1
 
-// HTMLTable renders a compact, striped table with a header row; every cell is
-// escaped. Telegram's default cell padding makes a short table fill the
-// screen, hence compact. The row at index highlight is set in bold, e.g. the
-// current week of a plan; NoHighlight sets none.
+// HTMLTable renders a compact, striped table; every cell is escaped.
+// Telegram's default cell padding makes a short table fill the screen, hence
+// compact. A nil header leaves out the header row, for a table whose columns
+// speak for themselves; header cells are left-aligned like the rest, where
+// Telegram would centre them. The row at index highlight is set in bold, e.g.
+// the current week of a plan; NoHighlight sets none.
 func HTMLTable(header []string, rows [][]string, highlight int) string {
 	var b strings.Builder
-	b.WriteString("<table compact striped><tr>")
-	for _, h := range header {
-		b.WriteString("<th>" + Esc(h) + "</th>")
+	b.WriteString("<table compact striped>")
+	if header != nil {
+		b.WriteString("<tr>")
+		for _, h := range header {
+			b.WriteString(`<th align="left">` + Esc(h) + "</th>")
+		}
+		b.WriteString("</tr>")
 	}
-	b.WriteString("</tr>")
 	for i, row := range rows {
 		b.WriteString("<tr>")
 		for _, cell := range row {

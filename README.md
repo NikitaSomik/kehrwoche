@@ -13,7 +13,7 @@ Diagrams (architecture, onboarding, database) and the runbooks (schedule, secret
 
 ## Bot commands
 
-`/toilette1`, `/toilette2`, `/treppenhaus`, `/etage`, `/waschkueche` — who's on
+`/toilette1`, `/toilette2`, `/flur`, `/etage`, `/waschkueche` — who's on
 duty this week — each with a `_plan` variant for the next 4 weeks, plus `/help`
 and `/start`. All defined in `pkg/botcmd`.
 

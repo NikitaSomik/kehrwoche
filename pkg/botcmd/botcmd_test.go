@@ -119,14 +119,14 @@ func TestPlan(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	n := schedule.DutyTypeToilet1.PlanCount()
-	if !strings.Contains(got.Plain, "Toilette 1") || !strings.Contains(got.HTML, "<h4>🚽 Toilette 1") {
+	if !strings.Contains(got.Plain, "Toilette 1") || !strings.Contains(got.HTML, "<p><b>🚽 Toilette 1") {
 		t.Errorf("got %+v, want the duty label in the title", got)
 	}
 	if strings.Count(got.Plain, ": —") != n {
 		t.Errorf("plain %q, want %d empty-room placeholders", got.Plain, n)
 	}
-	if strings.Count(got.HTML, "<td>—</td>") != n-1 || strings.Count(got.HTML, "<tr>") != n+1 {
-		t.Errorf("html %q, want a header and %d rows with empty rooms", got.HTML, n)
+	if strings.Count(got.HTML, "<td>—</td>") != n-1 || strings.Count(got.HTML, "<tr>") != n || strings.Contains(got.HTML, "<th") {
+		t.Errorf("html %q, want %d rows with empty rooms and no header", got.HTML, n)
 	}
 	if !strings.Contains(got.HTML, "<tr><td><b>19.06 – 21.06</b></td><td><b>—</b></td></tr>") {
 		t.Errorf("html %q, want the current week in bold", got.HTML)
@@ -138,7 +138,7 @@ func TestPlan(t *testing.T) {
 func TestCommandsFromDuties(t *testing.T) {
 	want := map[string]string{
 		"toilette1":        "Wer putzt diese Woche die Toilette 1?",
-		"treppenhaus":      "Wer putzt diese Woche das Treppenhaus?",
+		"flur":             "Wer putzt diese Woche den Flur?",
 		"waschkueche_plan": "Plan für die nächsten 4 Wochen (Waschküche)",
 	}
 	if len(commands) != 2*len(duties) {
@@ -167,6 +167,9 @@ func TestLookup(t *testing.T) {
 	}
 	if _, ok := Lookup("help"); ok {
 		t.Error("Lookup(help) should be false — /help is a static reply, not a duty command")
+	}
+	if _, ok := Lookup("treppenhaus_plan"); !ok {
+		t.Error("Lookup(treppenhaus_plan) not found — the old name of /flur_plan must keep working")
 	}
 	if _, ok := Lookup("nope"); ok {
 		t.Error("Lookup(nope) should be false")
