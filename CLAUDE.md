@@ -53,7 +53,7 @@ These break silently when only one side changes:
 - `schedule.RoomCount` is repeated in the `users_room_check` CHECK of `migrations/0003_onboarding.sql`.
 - A new table goes into `internal/pgtest.Raw`'s drop list, or the second integration run fails.
 - A new update kind in `api/webhook.go` goes into `allowedUpdates` in `cmd/setwebhook`.
-- A change to `pkg/botcmd`'s commands needs `task setcommands` afterwards (admins get theirs with their next `/start`).
+- A change to `pkg/botcmd`'s commands needs `task setcommands` afterwards; it also refreshes the admins' private menus (an admin who never wrote to the bot gets theirs with their first `/start`).
 - Update the matching `docs/` diagram when a change moves a call between packages, a branch of the onboarding, or a column; a change to `cmd/seed`'s flags or prompts updates `docs/schedule.md`.
 - `hall` is seeded one block at a time with `-regen`, never together with other duties: `-regen` deletes forward for every duty selected (`checkBlockDuties`).
 

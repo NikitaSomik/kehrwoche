@@ -73,20 +73,9 @@ var handlers = func() map[string]Handler {
 	return m
 }()
 
-// renamed maps a duty command's old name to its current one, so the old name
-// still answers when typed by hand or tapped in an old message. It stays out
-// of the menu and /help.
-var renamed = map[string]string{
-	"treppenhaus":      "flur",
-	"treppenhaus_plan": "flur_plan",
-}
-
 // Lookup returns the handler for a duty command, or ok=false for anything not
 // in the list (the webhook then stays silent).
 func Lookup(name string) (Handler, bool) {
-	if current, ok := renamed[name]; ok {
-		name = current
-	}
 	h, ok := handlers[name]
 	return h, ok
 }

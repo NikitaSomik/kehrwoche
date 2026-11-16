@@ -158,3 +158,20 @@ func TestButtonStyleAndDisabled(t *testing.T) {
 		t.Errorf("got %s, want it to contain %s", *body, want)
 	}
 }
+
+func TestGetAdministratorsLeavesOutBots(t *testing.T) {
+	client, body, path := capturingClient(http.StatusOK, `{"ok":true,"result":[
+		{"status":"creator","user":{"id":1,"first_name":"Ana"}},
+		{"status":"administrator","user":{"id":2,"is_bot":true,"first_name":"Kehrwoche"}},
+		{"status":"administrator","user":{"id":3,"first_name":"Ben"}}]}`)
+	admins, err := client.GetAdministrators(context.Background(), -100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasSuffix(*path, "/getChatAdministrators") || !strings.Contains(*body, `"chat_id":-100`) {
+		t.Errorf("request %s %s", *path, *body)
+	}
+	if len(admins) != 2 || admins[0].ID != 1 || admins[1].ID != 3 {
+		t.Errorf("admins %+v, want Ana and Ben without the bot", admins)
+	}
+}
