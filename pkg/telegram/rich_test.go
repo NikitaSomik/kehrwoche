@@ -66,6 +66,17 @@ func TestSendRich(t *testing.T) {
 	})
 }
 
+func TestQuoteLines(t *testing.T) {
+	got := QuoteLines([]string{"a & b", "c"}, 0, "jetzt")
+	want := "<blockquote><b>a &amp; b</b> ← jetzt<br>c</blockquote>"
+	if got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+	if got := QuoteLines([]string{"x"}, NoHighlight, ""); got != "<blockquote>x</blockquote>" {
+		t.Errorf("got %q", got)
+	}
+}
+
 func TestHTMLTable(t *testing.T) {
 	t.Run("escapes cells", func(t *testing.T) {
 		got := HTMLTable([]string{"A&B"}, [][]string{{"<x>"}}, NoHighlight)

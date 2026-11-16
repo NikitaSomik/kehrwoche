@@ -184,16 +184,16 @@ func (c cronRun) remind(ctx context.Context, now time.Time) []string {
 	return append(problems, c.horizonProblems(ctx, conn, now)...)
 }
 
-// reminder renders the duties and their rooms as a table under a heading,
-// with a plain copy of one "duty: room" line each.
+// reminder renders the duties and their rooms as a quoted list under a title,
+// one "duty · room" line each.
 func reminder(window string, rows [][]string) telegram.Rich {
 	title := "🔔 Erinnerung · " + window
 	lines := make([]string, len(rows))
 	for i, r := range rows {
-		lines[i] = r[0] + ": " + r[1]
+		lines[i] = r[0] + " · " + r[1]
 	}
 	return telegram.Rich{
-		HTML:  telegram.Title(title) + telegram.HTMLTable(nil, rows, telegram.NoHighlight),
+		HTML:  telegram.Title(title) + telegram.QuoteLines(lines, telegram.NoHighlight, ""),
 		Plain: title + "\n\n" + strings.Join(lines, "\n"),
 	}
 }
