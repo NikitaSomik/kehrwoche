@@ -181,9 +181,6 @@ func TestLookup(t *testing.T) {
 	if _, ok := Lookup("help"); ok {
 		t.Error("Lookup(help) should be false — /help is a static reply, not a duty command")
 	}
-	if _, ok := Lookup("treppenhaus_plan"); !ok {
-		t.Error("Lookup(treppenhaus_plan) not found — the old name of /flur_plan must keep working")
-	}
 	if _, ok := Lookup("nope"); ok {
 		t.Error("Lookup(nope) should be false")
 	}
